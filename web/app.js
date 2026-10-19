@@ -7,10 +7,12 @@ const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // Recommended by the MOSS-Image authors (README and USERGUIDE.md): Euler, 50 steps, CFG 3,
 // shift 5, uncond skip at layer 22, ~1 MP output, and their suggested negative tags minus "nsfw".
 // The default prompt mixes both formats from USERGUIDE.md: a first line of tags in their recommended
-// order (quality, meta, then general) for the character, and prose after it for the scene, framing,
-// lighting and mood, with exact quoted text for lettering. The character is ComfyUI's mascot.
+// order (quality, score, meta, year, character, series, artist, general), then prose for the scene,
+// framing, lighting and mood, with exact quoted text for lettering. The guide doesn't spell out score
+// or year tags, so those follow Anima, whose order it matches. No artist tag: users report @artist
+// tags barely work on MOSS.
 const DEFAULTS = {
-  prompt: "best quality, highres, 1girl, solo, fox girl, fennec ears, fox tail, long hair, wavy hair, blonde hair, blue eyes, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her ears perked up and her fluffy tail curled over the back of the chair. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
+  prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater, holding cup\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
   randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "",
