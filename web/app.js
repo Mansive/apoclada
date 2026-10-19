@@ -102,10 +102,7 @@ const MOSS_NOTES = {
 };
 const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
 const MODES = {
-  full: {
-    tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.",
-    samplerNote: "Euler is what the MOSS authors use. ComfyUI's template uses er_sde and simple at 25 steps and CFG 2.5.", ...MOSS_NOTES,
-  },
+  full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
   turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", samplerNote: "Euler is what the MOSS authors use.", ...MOSS_NOTES },
   krea2: {
     tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "", sampler: "euler", scheduler: "simple" }, steps: [4, 16], note: "8 to 12 is recommended.",
@@ -333,7 +330,8 @@ function syncForm() {
   for (const b of $("slg").children) b.setAttribute("aria-checked", b.dataset.layer === settings.slgLayer);
   $("sampler").value = settings.sampler;
   $("scheduler").value = settings.scheduler;
-  $("sampler-note").textContent = mode.samplerNote;
+  $("sampler-note").textContent = mode.samplerNote ?? "";
+  $("sampler-note").hidden = !mode.samplerNote;
   save(SETTINGS_KEY, settings);
 }
 
