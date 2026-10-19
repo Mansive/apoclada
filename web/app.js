@@ -1040,6 +1040,8 @@ function bindViewer() {
   $("v-reveal").onclick = revealCurrent;
   let startX = null;
   const area = $("viewer");
+  // A tap on the black space around the picture closes the viewer, like Close does.
+  area.addEventListener("click", (e) => { if (!e.target.closest("img, video, button, a")) closeViewer(); });
   // Swipes on the video would fight with scrubbing its timeline, so they don't change pages.
   area.addEventListener("touchstart", (e) => { startX = e.touches.length === 1 && e.target.tagName !== "VIDEO" ? e.touches[0].clientX : null; }, { passive: true });
   area.addEventListener("touchend", (e) => {
