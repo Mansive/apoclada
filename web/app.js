@@ -356,7 +356,6 @@ function syncVideoForm() {
   $("start-thumb").hidden = !v.start;
   if (v.start) $("start-thumb").src = startUrl(v.start);
   $("start-clear").hidden = !v.start;
-  $("start-pick").textContent = v.start ? "Change…" : "Choose image…";
 }
 
 function startUrl(start) {
@@ -425,6 +424,10 @@ function bindForm() {
   $("vsteps").oninput = (e) => { settings.video.steps = Number(e.target.value); syncForm(); };
   $("start-file").onchange = (e) => { const file = e.target.files[0]; e.target.value = ""; if (file) setStartImage(file); };
   $("start-clear").onclick = () => { setVideoStart(null); syncForm(); };
+  $("start-gallery").onclick = pickFromGallery;
+  $("picker-close").onclick = () => $("picker").close();
+  // A tap outside the panel lands on the dialog's backdrop, which counts as the dialog itself.
+  $("picker").onclick = (e) => { if (e.target === $("picker")) $("picker").close(); };
   $("negative").oninput = (e) => { settings.negative = e.target.value; save(SETTINGS_KEY, settings); };
   $("steps").oninput = (e) => { settings.steps = Number(e.target.value); syncForm(); };
   $("cfg").oninput = (e) => { settings.cfg = Number(e.target.value); syncForm(); };
@@ -1072,13 +1075,41 @@ function reuseVideo(graph, h3) {
   toast("Settings loaded with the same seed. Turn on “Randomize” for variations.");
 }
 
-// Sends an image from the gallery to Video mode as the start frame. JPEG XL goes as the PC's PNG copy
-// so the start image loads in any browser and in LoadImage.
-async function animateCurrent() {
-  const img = viewer.list[viewer.index];
+// Uploads a gallery image as the video's start frame. JPEG XL goes as the PC's PNG copy so the start
+// image loads in any browser and in LoadImage.
+async function startFromGallery(img) {
   const blob = await fetch(isJxl(img) ? pngUrl(img) : imageUrl(img)).then((r) => r.blob()).catch(() => null);
   const name = img.filename.replace(/\.jxl$/i, ".png");
-  if (!blob || !(await setStartImage(new File([blob], name, { type: blob.type })))) return;
+  return Boolean(blob) && setStartImage(new File([blob], name, { type: blob.type }));
+}
+
+async function pickFromGallery() {
+  const images = (await fetch("/studio/images").then((r) => r.json()).catch(() => [])).filter((img) => !isVideo(img));
+  if (!images.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No images in the gallery yet.";
+    $("picker-grid").replaceChildren(p);
+  } else {
+    $("picker-grid").replaceChildren(...images.map((img) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const el = document.createElement("img");
+      el.loading = "lazy";
+      el.src = thumbUrl(img);
+      el.alt = img.filename;
+      btn.append(el);
+      btn.onclick = () => { $("picker").close(); startFromGallery(img); };
+      return btn;
+    }));
+  }
+  $("picker").showModal();
+  $("picker").scrollTop = 0;
+}
+
+// Sends the viewer's image to Video mode as the start frame.
+async function animateCurrent() {
+  if (!(await startFromGallery(viewer.list[viewer.index]))) return;
   settings.kind = "video";
   syncForm();
   closeViewer();

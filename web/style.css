@@ -209,7 +209,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .viewer-hint { margin: 6px 0 0; text-align: center; font-size: 13px; color: oklch(1 0 0 / 0.6); }
 .viewer-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 12px 16px 16px; }
 .viewer-bar [aria-label] { font-size: 22px; width: 48px; }
-.viewer .icon { width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; }
+.icon { width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; }
 /* Info is a sheet over the lower part of the viewer on phones, and a column beside the picture
    on wider screens, where the picture and buttons move over to stay in view. */
 .viewer-info {
@@ -229,6 +229,18 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   }
   .viewer:has(> .viewer-info:not([hidden])) { padding-right: 360px; }
 }
+
+.picker {
+  padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text);
+  width: min(calc(100vw - 32px), 960px); max-height: calc(100dvh - 32px); overflow-y: auto;
+}
+.picker::backdrop { background: oklch(0 0 0 / 0.6); }
+.picker-head {
+  position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.picker h2 { margin: 0; font-size: 17px; }
+.picker .grid { padding: 16px; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;
