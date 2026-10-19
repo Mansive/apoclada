@@ -14,15 +14,16 @@ const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // MiniMax's H3 prompt guide (VIDEO_PROMPT_WRITING_GUIDE_base_en.md) uses three fields: shots with camera
 // moves and speaker-tagged <d> dialogue, ambient sound, and background score. Filling both sound fields
 // keeps the model from inventing speech. Image-to-video prompts start with START_LINE and a blank line.
-const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she blows gently across the mug, smiles, and with a soft, bright voice (S1) says: <d>[English] Just one more cup before I go.</d>
+// Later shots start with their cut time (MM:SS.mmm), which has to fall inside the video, so both
+// examples cut to a second shot at 2.1 s to fit lengths from 3 s up.
+const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she blows gently across the mug, smiles, and with a soft, bright voice (S1) says: <d>[English] Just one more cup before I go.</d> [Shot 2] At 00:02.100, the camera cuts to a close-up of Hatsune Miku's face lit by the warm café light as she takes a slow sip and her eyes drift to the rain outside.
 
 overall_soundscape: Rain patters steadily against the window glass, the ceramic mug clinks softly on the wooden table, and muffled traffic hums outside.
 
 non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
 // With a start image the guide describes only the motion and what <Picture 1> keeps, so this example
 // fits any picture. The main character speaks one short line, and both sound fields are filled so no
-// other speech is invented. Later shots start with their cut time (MM:SS.mmm), which has to fall inside
-// the video, so the second shot cuts in at 2.1 s to fit lengths from 3 s up.
+// other speech is invented.
 const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently, turns slightly toward the camera with a soft smile, and with a gentle, warm voice (S1) says: <d>[English] Hi, it's nice to see you.</d> [Shot 2] At 00:02.100, the camera cuts to a close-up of the main character's face in the same setting and lighting as their smile widens and their eyes sparkle.
 
 overall_soundscape: Soft ambient sound that fits the setting, with faint fabric rustling as the character moves.
