@@ -36,7 +36,7 @@ const MOSS_NOTES = {
 };
 const MODES = {
   full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22" }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
-  fast: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "" }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
+  turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "" }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
   krea2: {
     tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "" }, steps: [4, 16], note: "8 to 12 is recommended.",
     sizeNote: "1 MP is the official default.",
@@ -67,8 +67,11 @@ settings.video = { ...DEFAULTS.video, ...settings.video };
 if (settings.video.mp === 1) settings.video.mp = 0.98;
 // Start images moved from input/mobile to input/studio with the rename to Apoclada Studio.
 if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder = "studio";
+// The 8-step mode was saved as "fast" before it was renamed to Turbo.
+for (const k of ["mode", "mossMode"]) if (settings[k] === "fast") settings[k] = "turbo";
+if (settings.tuning?.fast) { settings.tuning.turbo = settings.tuning.fast; delete settings.tuning.fast; }
 let models = [];
-let fastLora = null;
+let turboLora = null;
 let videoFiles = null;
 let pending = load(PENDING_KEY, []);
 let running = null;
@@ -193,15 +196,15 @@ function syncForm() {
   $("megapixels").value = MEGAPIXELS.indexOf(settings.mp);
   const { width, height } = dimensions(settings.aspect, settings.mp);
   $("size-out").textContent = `${settings.mp} MP · ${width} × ${height}`;
-  const fast = settings.mode === "fast";
+  const turbo = settings.mode === "turbo";
   const krea2 = settings.mode === "krea2";
   const mode = MODES[settings.mode];
-  $("mode-field").hidden = !fastLora;
+  $("mode-field").hidden = !turboLora;
   setUnused($("mode-field"), krea2, "Krea 2 models have no Turbo mode");
   for (const b of $("mode").children) b.setAttribute("aria-checked", b.dataset.mode === settings.mode);
-  setUnused($("negative-field"), fast || settings.cfg <= 1, fast ? "Not used in Turbo mode" : "Not used at CFG 1");
-  setUnused($("cfg-field"), fast, "Not used in Turbo mode");
-  setUnused($("slg-field"), fast || krea2, fast ? "Not used in Turbo mode" : "Not used with Krea 2 models");
+  setUnused($("negative-field"), turbo || settings.cfg <= 1, turbo ? "Not used in Turbo mode" : "Not used at CFG 1");
+  setUnused($("cfg-field"), turbo, "Not used in Turbo mode");
+  setUnused($("slg-field"), turbo || krea2, turbo ? "Not used in Turbo mode" : "Not used with Krea 2 models");
   [$("steps").min, $("steps").max] = mode.steps;
   $("steps-note").textContent = mode.note;
   $("size-note").textContent = mode.sizeNote;
@@ -216,10 +219,10 @@ function syncForm() {
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
       ]
     : [
-        fast ? "Turbo" : "",
+        turbo ? "Turbo" : "",
         `${width}×${height}`,
         `${settings.steps} steps`,
-        fast ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
+        turbo ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
         settings.batch > 1 ? `${settings.batch} images` : "",
       ]).filter(Boolean).join(" · ");
@@ -363,18 +366,18 @@ function buildWorkflow(s) {
   const model = models.find((m) => m.name === s.model);
   const { width, height } = dimensions(s.aspect, s.mp);
   if (model.family === "krea2") return buildKrea2Workflow(s, model, width, height);
-  const fast = s.mode === "fast";
+  const turbo = s.mode === "turbo";
   // ComfyUI's native MOSS model takes raw 0-1 timesteps: ModelSamplingSD3 would scale them by 1000
   // and produce pure noise, so the shift goes through the AuraFlow node instead.
   return {
     "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "moss_image", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
-    ...(fast && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: fastLora, strength_model: 1, model: ["1", 0] } } }),
+    ...(turbo && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: turboLora, strength_model: 1, model: ["1", 0] } } }),
     "4": { class_type: "CLIPTextEncode", inputs: { text: s.prompt, clip: ["2", 0] } },
     "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
     "6": { class_type: "EmptyFlux2LatentImage", inputs: { width, height, batch_size: s.batch } },
-    "15": { class_type: "ModelSamplingAuraFlow", inputs: { shift: s.shift, model: [fast ? "20" : "1", 0] } },
+    "15": { class_type: "ModelSamplingAuraFlow", inputs: { shift: s.shift, model: [turbo ? "20" : "1", 0] } },
     "13": {
       class_type: "SkipLayerGuidanceDiTSimple",
       inputs: { double_layers: "", single_layers: s.slgLayer, start_percent: 0, end_percent: 1, model: ["15", 0] },
@@ -808,9 +811,9 @@ async function reuseCurrent() {
     settings.mp = MEGAPIXELS.reduce((best, m) => (Math.abs(m - mp) < Math.abs(best - mp) ? m : best));
     settings.batch = latent.batch_size || 1;
   }
-  const fast = Object.values(graph).some((n) => n.class_type === "LoraLoaderModelOnly");
-  if (fast && !fastLora) { toast("This image used Turbo mode, but its LoRA is missing on the PC"); return; }
-  settings.mode = fast ? "fast" : "full";
+  const turbo = Object.values(graph).some((n) => n.class_type === "LoraLoaderModelOnly");
+  if (turbo && !turboLora) { toast("This image used Turbo mode, but its LoRA is missing on the PC"); return; }
+  settings.mode = turbo ? "turbo" : "full";
   settings.slgLayer = "";
   for (const n of Object.values(graph)) {
     if (n.class_type === "ModelSamplingSD3" || n.class_type === "ModelSamplingAuraFlow") settings.shift = n.inputs.shift;
@@ -1036,12 +1039,12 @@ async function init() {
 }
 
 async function loadModels() {
-  [models, { lora: fastLora }, videoFiles] = await Promise.all([
+  [models, { lora: turboLora }, videoFiles] = await Promise.all([
     fetch("/studio/models").then((r) => r.json()).catch(() => []),
-    fetch("/studio/fast").then((r) => r.json()).catch(() => ({ lora: null })),
+    fetch("/studio/turbo").then((r) => r.json()).catch(() => ({ lora: null })),
     fetch("/studio/video").then((r) => r.json()).catch(() => null),
   ]);
-  if (!fastLora && settings.mode === "fast") setMode("full");
+  if (!turboLora && settings.mode === "turbo") setMode("full");
   if (!videoFiles) settings.kind = "image";
   else if (!models.length) settings.kind = "video";
   renderModels();

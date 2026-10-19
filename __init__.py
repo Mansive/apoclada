@@ -47,7 +47,7 @@ FILES = {
     "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1956193000),
 }
 MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "flux2-vae.safetensors"}
-FAST_LORA = "moss-image-sft-8step-dmd.safetensors"
+TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
 # Krea 2 and its fine-tunes (e.g. lodestones' Kroma) run on ComfyUI's native nodes with the
 # text encoder and VAE from Comfy-Org/Krea-2.
 KREA2 = {"clip": "qwen3vl_4b_int8_convrot.safetensors", "vae": "qwen_image_vae.safetensors"}
@@ -62,7 +62,7 @@ H3 = {
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
 PACKS = [
-    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality and Turbo modes.", "files": [*MOSS.values(), FAST_LORA]},
+    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality and Turbo modes.", "files": [*MOSS.values(), TURBO_LORA]},
     {"id": "krea2", "name": "Kroma", "about": "Images from lodestones' Krea 2 fine-tune, in 8 steps.", "files": list(KREA2.values()),
      "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
     {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt or a start image.", "files": list(H3.values())},
@@ -136,9 +136,9 @@ async def studio_models(request):
     return web.json_response(models)
 
 
-@routes.get("/studio/fast")
-async def studio_fast(request):
-    return web.json_response({"lora": FAST_LORA if have(FAST_LORA) else None})
+@routes.get("/studio/turbo")
+async def studio_turbo(request):
+    return web.json_response({"lora": TURBO_LORA if have(TURBO_LORA) else None})
 
 
 # Video mode is offered only when every H3 file is present; the turbo LoRA is optional.
