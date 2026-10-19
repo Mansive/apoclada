@@ -6,8 +6,12 @@ const MEGAPIXELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
 const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // Recommended by the MOSS-Image authors (README and USERGUIDE.md): Euler, 50 steps, CFG 3,
 // shift 5, uncond skip at layer 22, ~1 MP output, and their suggested negative tags minus "nsfw".
+// The default prompt follows their prompt enhancer's advice: plain English describing what's visible
+// (subject, setting, framing, lighting, palette, mood), placement in words, exact quoted text for
+// lettering, and no quality tags.
 const DEFAULTS = {
-  prompt: "", negative: "worst quality, bad anatomy, watermark, jpeg artifact",
+  prompt: "A small corner café on a rainy evening, seen from across the street at eye level. Warm amber light spills from its tall windows onto the wet cobblestones, where the reflections shimmer in shallow puddles. Inside, a barista in a green apron pours steamed milk while two customers read at a wooden counter. Above the door, a hand-painted sign reads \"Open late\" in cream letters on dark green wood. Shot on a 35 mm lens with soft, cinematic light; cool blue dusk outside contrasts with the warm glow inside, and the mood is calm and inviting.",
+  negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
   randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "",
   mode: "full", tuning: {}, kind: "image",
@@ -55,9 +59,7 @@ function save(key, value) {
 // survive a reload; a fresh one per page keeps two open tabs from taking each other's socket.
 const clientId = `moss-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
-// v1 settings predate the authors' defaults; start fresh from them but keep the prompt.
-const v1 = load("moss-studio-settings", null);
-let settings = { ...DEFAULTS, ...(load(SETTINGS_KEY, null) || { prompt: v1?.prompt ?? "" }) };
+let settings = { ...DEFAULTS, ...load(SETTINGS_KEY, null) };
 if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg artifact") settings.negative = DEFAULTS.negative;
 settings.video = { ...DEFAULTS.video, ...settings.video };
 if (settings.video.mp === 1) settings.video.mp = 0.98;
@@ -342,7 +344,7 @@ function bindForm() {
   };
   $("reset-prompts").onclick = () => {
     const video = settings.kind === "video";
-    if (!confirm(video ? "Clear the prompt?" : "Clear the prompt and restore the default negative prompt?")) return;
+    if (!confirm(video ? "Clear the prompt?" : "Replace your prompts with the default example prompt and negative prompt?")) return;
     if (video) settings.video.prompt = DEFAULTS.video.prompt;
     else Object.assign(settings, { prompt: DEFAULTS.prompt, negative: DEFAULTS.negative });
     syncForm();
