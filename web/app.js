@@ -19,6 +19,13 @@ const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, s
 overall_soundscape: Rain patters steadily against the window glass, the ceramic mug clinks softly on the wooden table, and muffled traffic hums outside.
 
 non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
+// With a start image the guide describes only the motion and what <Picture 1> keeps, so this example
+// fits any picture. It has no speaker, and both sound fields are filled so no speech is invented.
+const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently and turns slightly toward the camera with a soft smile.
+
+overall_soundscape: Soft ambient sound that fits the setting, with faint fabric rustling as the character moves.
+
+non_diegetic_music: N/A`;
 const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
@@ -77,7 +84,7 @@ let settings = { ...DEFAULTS, ...load(SETTINGS_KEY, null) };
 if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg artifact") settings.negative = DEFAULTS.negative;
 settings.video = { ...DEFAULTS.video, ...settings.video };
 // The video prompt started out empty; an empty one can't be generated, so it gets the example.
-settings.video.prompt ||= DEFAULTS.video.prompt;
+settings.video.prompt ||= videoPrompt(settings.video.start);
 if (settings.video.mp === 1) settings.video.mp = 0.98;
 // Start images moved from input/mobile to input/studio with the rename to Apoclada Studio.
 if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder = "studio";
@@ -321,9 +328,20 @@ async function setStartImage(file) {
   const { name, subfolder } = await res.json();
   const size = await imageSize(startUrl({ name, subfolder })).catch(() => null);
   if (!size) { toast("That image format isn't supported"); return false; }
-  settings.video.start = { name, subfolder, ...size };
+  setVideoStart({ name, subfolder, ...size });
   syncForm();
   return true;
+}
+
+function videoPrompt(start) {
+  return start ? ANIMATE_PROMPT : VIDEO_PROMPT;
+}
+
+// An untouched example prompt switches to the one for a video with or without a start image.
+function setVideoStart(start) {
+  const v = settings.video;
+  if (v.prompt === videoPrompt(v.start)) v.prompt = videoPrompt(start);
+  v.start = start;
 }
 
 // − and + beside each slider move it one step, which is hard to do by dragging on a touch screen.
@@ -352,7 +370,7 @@ function bindForm() {
   $("length").oninput = (e) => { settings.video.seconds = Number(e.target.value); syncForm(); };
   $("vsteps").oninput = (e) => { settings.video.steps = Number(e.target.value); syncForm(); };
   $("start-file").onchange = (e) => { const file = e.target.files[0]; e.target.value = ""; if (file) setStartImage(file); };
-  $("start-clear").onclick = () => { settings.video.start = null; syncForm(); };
+  $("start-clear").onclick = () => { setVideoStart(null); syncForm(); };
   $("negative").oninput = (e) => { settings.negative = e.target.value; save(SETTINGS_KEY, settings); };
   $("steps").oninput = (e) => { settings.steps = Number(e.target.value); syncForm(); };
   $("cfg").oninput = (e) => { settings.cfg = Number(e.target.value); syncForm(); };
@@ -377,7 +395,7 @@ function bindForm() {
   $("reset-prompts").onclick = () => {
     const video = settings.kind === "video";
     if (!confirm(video ? "Replace your prompt with the default example prompt?" : "Replace your prompts with the default example prompt and negative prompt?")) return;
-    if (video) settings.video.prompt = DEFAULTS.video.prompt;
+    if (video) settings.video.prompt = videoPrompt(settings.video.start);
     else Object.assign(settings, { prompt: defaultPrompt(), negative: DEFAULTS.negative });
     syncForm();
   };
@@ -466,7 +484,7 @@ function buildVideoWorkflow(s) {
     ...(v.start && { "21": { class_type: "LoadImage", inputs: { image: `${v.start.subfolder}/${v.start.name}` } } }),
     "4": {
       class_type: "MiniMaxH3ImageToVideo",
-      inputs: { clip: ["2", 0], vae: ["3", 0], prompt: v.start && !v.prompt.includes("<Picture 1>") ? `${START_LINE}\n\n${v.prompt}` : v.prompt, width, height, length: videoLength(v.seconds), ...(v.start && { first_frame: ["21", 0] }) },
+      inputs: { clip: ["2", 0], vae: ["3", 0], prompt: v.start && !v.prompt.includes("is fully referenced") ? `${START_LINE}\n\n${v.prompt}` : v.prompt, width, height, length: videoLength(v.seconds), ...(v.start && { first_frame: ["21", 0] }) },
     },
     "7": { class_type: "RandomNoise", inputs: { noise_seed: s.seed } },
     "8": { class_type: "KSamplerSelect", inputs: { sampler_name: "res_multistep" } },
