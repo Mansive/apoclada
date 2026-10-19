@@ -486,12 +486,12 @@ function buildWorkflow(s) {
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
-    "18": saveNode("studio/moss"),
+    "18": saveNode("studio/moss", s),
   };
 }
 
-// TextGenerate "30" rewrites the prompt with the template's sampler settings, and PreviewAny "31"
-// returns the rewrite to the page. It uses the image's seed, so Reuse settings repeats the rewrite.
+// TextGenerate "30" rewrites the prompt with the template's sampler settings. It uses the image's
+// seed, so Reuse settings repeats the rewrite.
 function enhanceNodes(s, inputs) {
   return {
     "30": {
@@ -501,14 +501,14 @@ function enhanceNodes(s, inputs) {
         "sampling_mode.min_p": 0.05, "sampling_mode.seed": s.seed, "sampling_mode.presence_penalty": 0, thinking: false, use_default_template: true, ...inputs,
       },
     },
-    "31": { class_type: "PreviewAny", inputs: { source: ["30", 0] } },
   };
 }
 
-function saveNode(prefix) {
-  return prefs.image_format === "jxl" && prefs.jxl_available
-    ? { class_type: "ApocladaSaveImageJXL", inputs: { filename_prefix: prefix, lossless: prefs.jxl_lossless, images: ["17", 0] } }
-    : { class_type: "SaveImage", inputs: { filename_prefix: prefix, images: ["17", 0] } };
+// Apoclada's save nodes write the enhanced prompt into the file for the viewer's Info.
+function saveNode(prefix, s) {
+  const inputs = { filename_prefix: prefix, images: ["17", 0], ...(s.enhance && { enhanced_prompt: ["30", 0] }) };
+  if (prefs.image_format === "jxl" && prefs.jxl_available) return { class_type: "ApocladaSaveImageJXL", inputs: { ...inputs, lossless: prefs.jxl_lossless } };
+  return { class_type: s.enhance ? "ApocladaSaveImage" : "SaveImage", inputs };
 }
 
 // Follows Comfy's Krea 2 Turbo template (euler, simple scheduler), with the shift exposed through
@@ -531,7 +531,7 @@ function buildKrea2Workflow(s, model, width, height) {
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
-    "18": saveNode("studio/krea2"),
+    "18": saveNode("studio/krea2", s),
   };
 }
 
@@ -665,7 +665,7 @@ async function collectResult(id) {
   const entry = res && res.ok ? (await res.json())[id] : null;
   if (!entry) return false;
   const images = Object.values(entry.outputs || {}).flatMap((o) => o.images || []).filter((i) => i.type === "output");
-  if (images.length) showResults(images, id, entry.outputs["31"]?.text?.[0]);
+  if (images.length) showResults(images, id);
   else if (entry.status?.status_str === "error") {
     const err = (entry.status.messages || []).find((m) => m[0] === "execution_error");
     if (err) toast(`Error: ${err[1].exception_message}`);
@@ -674,7 +674,7 @@ async function collectResult(id) {
   return true;
 }
 
-function showResults(images, version, rewrite) {
+function showResults(images, version) {
   removePreview();
   const box = $("results");
   box.querySelector(".empty")?.remove();
@@ -702,19 +702,7 @@ function showResults(images, version, rewrite) {
     el.dataset.key = imageKey(img);
     box.prepend(el);
   }
-  if (rewrite) box.prepend(rewriteCard(rewrite));
   while (box.children.length > 12) box.lastElementChild.remove();
-}
-
-// "Use as prompt" turns Enhance off too, so the rewrite isn't rewritten again.
-function rewriteCard(text) {
-  const use = el("button", { type: "button", className: "ghost", textContent: "Use as prompt" });
-  use.onclick = () => {
-    Object.assign(settings, { prompt: text, enhance: false, kind: "image" });
-    syncForm();
-    toast("Rewritten prompt copied to the prompt box. Enhance prompt is now off.");
-  };
-  return el("div", { className: "rewrite" }, el("span", { className: "label", textContent: "Rewritten prompt" }), el("p", { textContent: text }), use);
 }
 
 function showPreview(blob) {
@@ -852,6 +840,7 @@ function openViewer(list, index) {
 
 function closeViewer() {
   $("viewer").hidden = true;
+  $("v-info-panel").hidden = true;
   unloadVideo($("v-video"));
   document.body.style.overflow = "";
 }
@@ -895,6 +884,7 @@ function showViewerImage() {
   $("v-pos").textContent = list.length > 1 ? `${viewer.index + 1} / ${list.length}` : "";
   $("v-prev").disabled = viewer.index === 0;
   $("v-next").disabled = viewer.index === list.length - 1;
+  if (!$("v-info-panel").hidden) showInfo();
 }
 
 function step(delta) {
@@ -929,10 +919,78 @@ async function revealCurrent() {
   toast(res && res.ok ? "Opened the folder on the PC" : "Couldn't open the folder");
 }
 
+function imageInfo(img) {
+  const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "" });
+  return fetch(`/studio/images/info?${q}`).then((r) => r.json()).catch(() => null);
+}
+
+// Info lists the prompts and settings read back from the workflow saved in the file. Enhanced
+// images keep the typed prompt in TextGenerate and the rewrite next to the workflow.
+async function showInfo() {
+  const img = viewer.list[viewer.index];
+  $("v-info-panel").hidden = false;
+  $("v-info-list").replaceChildren(el("dd", { className: "note", textContent: "Loading…" }));
+  const info = await imageInfo(img);
+  if (viewer.list[viewer.index] !== img) return;
+  const rows = infoRows(info, img).filter(([, value]) => value !== null && value !== undefined && value !== "");
+  $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, ...[value].flat()))));
+}
+
+function infoRows(info, img) {
+  const graph = info?.prompt;
+  if (!graph) return [["Settings", "This file has no saved settings."], ["File", img.filename]];
+  const nodes = Object.values(graph);
+  const find = (type) => nodes.find((n) => n.class_type === type)?.inputs;
+  const linked = (link) => (Array.isArray(link) ? graph[link[0]] : null);
+  const turbo = find("LoraLoaderModelOnly") ? " · Turbo" : "";
+  const size = `${info.width} × ${info.height}`;
+  const h3 = find("MiniMaxH3ImageToVideo");
+  if (h3) {
+    return [
+      ["Prompt", h3.prompt.replace(`${START_LINE}\n\n`, "")],
+      ["Model", `MiniMax H3${turbo}`],
+      ["Start image", linked(h3.first_frame)?.inputs.image],
+      ["Size", size],
+      ["Length", `${Math.round(h3.length / 24)} s`],
+      ["Steps", find("BasicScheduler")?.steps],
+      ["Seed", find("RandomNoise")?.noise_seed],
+      ["File", img.filename],
+    ];
+  }
+  const s = find("KSampler");
+  if (!s) return [["Settings", "This file has no saved settings."], ["File", img.filename]];
+  const text = linked(s.positive)?.inputs.text;
+  const rewriter = linked(text);
+  const enhanced = rewriter && (info.enhanced_prompt ?? "Not saved in this file.");
+  const useEnhanced = el("button", { type: "button", className: "ghost", textContent: "Use as prompt" });
+  useEnhanced.onclick = () => {
+    Object.assign(settings, { prompt: enhanced, enhance: false, kind: "image" });
+    syncForm();
+    closeViewer();
+    selectTab("create");
+    toast("Enhanced prompt copied to the prompt box. Enhance prompt is now off.");
+  };
+  const unet = find("UNETLoader")?.unet_name.replace(/\.safetensors$/, "") ?? (find("MOSSImageHFLoader") && "MOSS-Image");
+  const slg = find("SkipLayerGuidanceDiTSimple")?.single_layers;
+  return [
+    [rewriter ? "Original prompt" : "Prompt", rewriter ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text],
+    ["Enhanced prompt", enhanced && (info.enhanced_prompt ? [enhanced, useEnhanced] : enhanced)],
+    ["Negative prompt", s.cfg > 1 ? linked(s.negative)?.inputs.text : null],
+    ["Model", unet && unet + turbo],
+    ["Size", size],
+    ["Steps", s.steps],
+    ["Prompt strength (CFG)", s.cfg],
+    ["Seed", s.seed],
+    ["Sigma shift", (find("ModelSamplingAuraFlow") ?? find("ModelSamplingSD3"))?.shift],
+    ["Layer skip guidance", slg === undefined ? null : String(slg).trim() || "Off"],
+    ["Sampler", `${s.sampler_name} · ${s.scheduler}`],
+    ["File", img.filename],
+  ];
+}
+
 async function reuseCurrent() {
   const img = viewer.list[viewer.index];
-  const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "" });
-  const info = await fetch(`/studio/images/info?${q}`).then((r) => r.json()).catch(() => null);
+  const info = await imageInfo(img);
   const graph = info?.prompt;
   const h3 = graph && Object.values(graph).find((n) => n.class_type === "MiniMaxH3ImageToVideo");
   if (h3) { reuseVideo(graph, h3.inputs); return; }
@@ -1038,12 +1096,15 @@ function bindViewer() {
   $("v-reuse").onclick = reuseCurrent;
   $("v-animate").onclick = animateCurrent;
   $("v-reveal").onclick = revealCurrent;
+  $("v-info").onclick = () => ($("v-info-panel").hidden ? showInfo() : ($("v-info-panel").hidden = true));
+  $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
   let startX = null;
   const area = $("viewer");
   // A tap on the black space around the picture closes the viewer, like Close does.
-  area.addEventListener("click", (e) => { if (!e.target.closest("img, video, button, a")) closeViewer(); });
-  // Swipes on the video would fight with scrubbing its timeline, so they don't change pages.
-  area.addEventListener("touchstart", (e) => { startX = e.touches.length === 1 && e.target.tagName !== "VIDEO" ? e.touches[0].clientX : null; }, { passive: true });
+  area.addEventListener("click", (e) => { if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer(); });
+  // Swipes on the video would fight with scrubbing its timeline, and swipes in Info with selecting
+  // its text, so neither changes pages.
+  area.addEventListener("touchstart", (e) => { startX = e.touches.length === 1 && !e.target.closest("video, .viewer-info") ? e.touches[0].clientX : null; }, { passive: true });
   area.addEventListener("touchend", (e) => {
     if (startX === null) return;
     const dx = e.changedTouches[0].clientX - startX;

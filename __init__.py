@@ -87,6 +87,25 @@ def jxl_box(kind, payload):
     return (len(payload) + 8).to_bytes(4, "big") + kind + payload
 
 
+# SaveImage that also stores the prompt Enhance prompt wrote, as an extra_pnginfo entry next to the
+# workflow, so the viewer's Info can show it. The workflow alone only holds the prompt that was typed.
+class SaveImageEnhanced(SaveImage):
+    DESCRIPTION = "Saves the input images to your ComfyUI output directory, with the enhanced prompt in the metadata."
+
+    @classmethod
+    def INPUT_TYPES(s):
+        types = SaveImage.INPUT_TYPES()
+        types["optional"] = {"enhanced_prompt": ("STRING", {"forceInput": True})}
+        return types
+
+    def save_images(self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None, enhanced_prompt=None):
+        return super().save_images(images, filename_prefix, prompt, with_enhanced(extra_pnginfo, enhanced_prompt))
+
+
+def with_enhanced(extra_pnginfo, enhanced_prompt):
+    return {**(extra_pnginfo or {}), "enhanced_prompt": enhanced_prompt} if enhanced_prompt else extra_pnginfo
+
+
 # SaveImage's twin for JPEG XL. The workflow goes into Exif the way ComfyUI writes WebP ("prompt:"
 # in the Model tag, other extra_pnginfo keys counting down from Make) so Reuse settings can read it.
 class SaveImageJXL(SaveImage):
@@ -94,11 +113,12 @@ class SaveImageJXL(SaveImage):
 
     @classmethod
     def INPUT_TYPES(s):
-        types = SaveImage.INPUT_TYPES()
+        types = SaveImageEnhanced.INPUT_TYPES()
         types["required"]["lossless"] = ("BOOLEAN", {"default": True})
         return types
 
-    def save_images(self, images, filename_prefix="ComfyUI", lossless=True, prompt=None, extra_pnginfo=None):
+    def save_images(self, images, filename_prefix="ComfyUI", lossless=True, prompt=None, extra_pnginfo=None, enhanced_prompt=None):
+        extra_pnginfo = with_enhanced(extra_pnginfo, enhanced_prompt)
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
         exif = Image.Exif()
         if not args.disable_metadata:
@@ -126,8 +146,8 @@ class SaveImageJXL(SaveImage):
         return {"ui": {"images": results}, "result": (images,)}
 
 
-NODE_CLASS_MAPPINGS = {"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {}
-NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImageJXL": "Save Image (JPEG XL)"}
+NODE_CLASS_MAPPINGS = {"ApocladaSaveImage": SaveImageEnhanced, **({"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {})}
+NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (with enhanced prompt)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)"}
 
 # Studio-wide choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
 PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
@@ -427,14 +447,19 @@ async def studio_image_info(request):
             prompt = container.metadata.get("prompt")
             stream = container.streams.video[0]
             width, height = stream.width, stream.height
+        enhanced = None
     else:
         with Image.open(path) as img:
             prompt = img.info.get("prompt")
+            enhanced = img.info.get("enhanced_prompt")
             width, height = img.size
             if prompt is None:
-                model = img.getexif().get(0x0110, "")
-                prompt = model.removeprefix("prompt:") if model.startswith("prompt:") else None
-    return web.json_response({"prompt": json.loads(prompt) if prompt else None, "width": width, "height": height})
+                # JPEG XL keeps them in Exif: the workflow in Model, extra_pnginfo counting down from Make.
+                exif = img.getexif()
+                tags = {v.split(":", 1)[0]: v.split(":", 1)[1] for t in range(0x0110, 0, -1) if isinstance(v := exif.get(t), str) and ":" in v}
+                prompt, enhanced = tags.get("prompt"), tags.get("enhanced_prompt")
+    return web.json_response({"prompt": json.loads(prompt) if prompt else None, "enhanced_prompt": json.loads(enhanced) if enhanced else None,
+                              "width": width, "height": height})
 
 
 # "Show in folder" opens Explorer on the PC, so it's only offered to a browser on the PC itself,

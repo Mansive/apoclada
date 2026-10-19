@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=77">
+<link rel="stylesheet" href="/studio/assets/style.css?v=78">
 </head>
 <body>
 <header class="topbar">
@@ -48,7 +48,7 @@
 
       <div class="field img-only">
         <label class="switch"><input id="enhance" type="checkbox"><span>Enhance prompt</span></label>
-        <span class="note">The text model first rewrites your prompt into a detailed one, using the instructions from ComfyUI's official template for the selected model. The rewrite appears above the image.</span>
+        <span class="note">The text model first rewrites your prompt into a detailed one, using the instructions from ComfyUI's official template for the selected model. Tap a finished image and then Info to read the rewrite.</span>
       </div>
 
       <button type="button" id="reset-prompts" class="ghost wide">Default prompts</button>
@@ -222,15 +222,23 @@
     <button type="button" id="v-prev" class="ghost" aria-label="Previous">‹</button>
     <a id="v-save" class="ghost" download hidden>Save</a>
     <button type="button" id="v-animate" class="ghost" hidden>Animate</button>
+    <button type="button" id="v-info" class="ghost">Info</button>
     <button type="button" id="v-reuse" class="ghost">Reuse settings</button>
     <button type="button" id="v-reveal" class="ghost" hidden title="Opens the file's folder in Explorer on the PC">Show in folder</button>
     <button type="button" id="v-delete" class="ghost danger">Delete</button>
     <button type="button" id="v-next" class="ghost" aria-label="Next">›</button>
   </div>
+  <div id="v-info-panel" class="viewer-info" hidden>
+    <div class="viewer-info-head">
+      <h2>Info</h2>
+      <button type="button" id="v-info-close" class="ghost">Done</button>
+    </div>
+    <dl id="v-info-list"></dl>
+  </div>
 </div>
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=77"></script>
+<script src="/studio/assets/app.js?v=78"></script>
 </body>
 </html>
