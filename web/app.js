@@ -20,8 +20,9 @@ overall_soundscape: Rain patters steadily against the window glass, the ceramic 
 
 non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
 // With a start image the guide describes only the motion and what <Picture 1> keeps, so this example
-// fits any picture. It has no speaker, and both sound fields are filled so no speech is invented.
-const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently and turns slightly toward the camera with a soft smile.
+// fits any picture. The main character speaks one short line, and both sound fields are filled so no
+// other speech is invented.
+const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently, turns slightly toward the camera with a soft smile, and with a gentle, warm voice (S1) says: <d>[English] Hi, it's nice to see you.</d>
 
 overall_soundscape: Soft ambient sound that fits the setting, with faint fabric rustling as the character moves.
 
