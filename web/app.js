@@ -6,11 +6,11 @@ const MEGAPIXELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
 const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // Recommended by the MOSS-Image authors (README and USERGUIDE.md): Euler, 50 steps, CFG 3,
 // shift 5, uncond skip at layer 22, ~1 MP output, and their suggested negative tags minus "nsfw".
-// The default prompt follows their prompt enhancer's advice: plain English describing what's visible
-// (subject, setting, framing, lighting, palette, mood), placement in words, exact quoted text for
-// lettering, and no quality tags.
+// The default prompt mixes both formats from USERGUIDE.md: a first line of tags in their recommended
+// order (quality, meta, then general) for the character, and prose after it for the scene, framing,
+// lighting and mood, with exact quoted text for lettering. The character is ComfyUI's mascot.
 const DEFAULTS = {
-  prompt: "A small corner café on a rainy evening, seen from across the street at eye level. Warm amber light spills from its tall windows onto the wet cobblestones, where the reflections shimmer in shallow puddles. Inside, a barista in a green apron pours steamed milk while two customers read at a wooden counter. Above the door, a hand-painted sign reads \"Open late\" in cream letters on dark green wood. Shot on a 35 mm lens with soft, cinematic light; cool blue dusk outside contrasts with the warm glow inside, and the mood is calm and inviting.",
+  prompt: "best quality, highres, 1girl, solo, fox girl, fennec ears, fox tail, long hair, wavy hair, blonde hair, blue eyes, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her ears perked up and her fluffy tail curled over the back of the chair. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
   randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "",
