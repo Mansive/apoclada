@@ -209,7 +209,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .viewer-hint { margin: 6px 0 0; text-align: center; font-size: 13px; color: oklch(1 0 0 / 0.6); }
 .viewer-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 12px 16px 16px; }
 .viewer-bar [aria-label] { font-size: 22px; width: 48px; }
-/* Info slides over the lower part of the viewer, leaving the picture's top in view. */
+.viewer .icon { width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; }
+/* Info is a sheet over the lower part of the viewer on phones, and a column beside the picture
+   on wider screens, where the picture and buttons move over to stay in view. */
 .viewer-info {
   position: absolute; left: 0; right: 0; bottom: 0; max-height: 75%; overflow-y: auto; margin: 0 auto; width: min(100%, 720px);
   padding: 0 16px calc(16px + env(safe-area-inset-bottom)); background: oklch(0.2 0.01 285 / 0.97);
@@ -221,6 +223,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .viewer-info dt { font-size: 13px; font-weight: 600; color: oklch(1 0 0 / 0.6); margin-bottom: 4px; }
 .viewer-info dd { margin: 0; font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .viewer-info dd button { display: block; margin-top: 8px; }
+@media (min-width: 700px) {
+  .viewer-info {
+    top: 0; left: auto; width: 360px; max-height: none; border: 0; border-left: 1px solid oklch(1 0 0 / 0.15); border-radius: 0;
+    padding: env(safe-area-inset-top) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) 16px;
+  }
+  .viewer:has(> .viewer-info:not([hidden])) { padding-right: 360px; }
+}
 
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;
