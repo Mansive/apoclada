@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Apoclada Studio">
+<meta name="theme-color" content="oklch(0.17 0.01 285)">
+<title>Apoclada Studio</title>
+<link rel="stylesheet" href="/mobile/assets/style.css?v=56">
+</head>
+<body>
+<header class="topbar">
+  <h1>Apoclada Studio</h1>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="create" aria-selected="true">Create</button>
+    <button role="tab" data-tab="gallery" aria-selected="false">Gallery</button>
+  </nav>
+  <span id="conn" class="conn" title="Connection to the PC">●</span>
+</header>
+
+<main>
+  <section id="tab-create" class="create">
+    <form id="form" class="controls" autocomplete="off" data-kind="image">
+      <div id="kind" class="segmented two" role="radiogroup" aria-label="What to make" hidden>
+        <button type="button" role="radio" data-kind="image">Image</button>
+        <button type="button" role="radio" data-kind="video">Video</button>
+      </div>
+
+      <label class="field img-only">
+        <span class="label">Model</span>
+        <select id="model"></select>
+      </label>
+
+      <label class="field">
+        <span class="label">Prompt</span>
+        <textarea id="prompt" rows="5"></textarea>
+      </label>
+
+      <details id="negative-field" class="field img-only">
+        <summary class="label">Negative prompt <span class="hint">optional</span></summary>
+        <textarea id="negative" rows="2" placeholder="Things to avoid, e.g. blurry, watermark"></textarea>
+      </details>
+
+      <button type="button" id="reset-prompts" class="ghost wide">Default prompts</button>
+
+      <div class="field vid-only">
+        <span class="label">Start image <span class="hint">optional</span></span>
+        <div class="start-image">
+          <img id="start-thumb" alt="Start image" hidden>
+          <label class="ghost pick">
+            <input id="start-file" type="file" accept="image/*" hidden>
+            <span id="start-pick">Choose image…</span>
+          </label>
+          <button type="button" id="start-clear" class="ghost danger" hidden>Remove</button>
+        </div>
+        <span class="note">The video starts from this picture and keeps its shape. Leave it empty to make a video from the prompt alone.</span>
+      </div>
+
+      <details id="settings" class="settings">
+      <summary>
+        <span class="settings-title">Settings</span>
+        <span id="settings-summary" class="settings-summary"></span>
+      </summary>
+      <div class="settings-body">
+
+      <div class="field vid-only">
+        <span class="label">Mode</span>
+        <div id="video-mode" class="segmented two" role="radiogroup" aria-label="Video mode">
+          <button type="button" role="radio" data-turbo="">Quality<small>20 steps</small></button>
+          <button type="button" role="radio" data-turbo="1">Turbo<small>8 steps</small></button>
+        </div>
+      </div>
+
+      <div id="vsteps-field" class="field vid-only">
+        <span class="label">Steps <output id="vsteps-out" class="value"></output></span>
+        <input id="vsteps" type="range" min="10" max="50" step="1">
+        <span class="note">More steps give a better video but take longer. The official template uses 20. Simple shots hold up at 12 to 16; fine detail keeps improving up to about 50. Speech and voices need 12 or more.</span>
+      </div>
+
+      <div class="field vid-only">
+        <span class="label">Length <output id="length-out" class="value"></output></span>
+        <input id="length" type="range" min="2" max="15" step="1">
+        <span class="note">2 to 15 seconds. Longer videos take longer to make.</span>
+      </div>
+
+      <div class="field vid-only">
+        <span class="label">Size <output id="vsize-out" class="value"></output></span>
+        <input id="video-mp" type="range" min="0" step="1" aria-label="Video size">
+        <span class="note">0.98 MP is H3's native size. Smaller sizes are faster but less detailed.</span>
+      </div>
+
+      <div id="mode-field" class="field img-only" hidden>
+        <span class="label">Mode</span>
+        <div id="mode" class="segmented two" role="radiogroup" aria-label="Mode">
+          <button type="button" role="radio" data-mode="full">Quality<small>50 steps</small></button>
+          <button type="button" role="radio" data-mode="fast">Fast<small>8 steps</small></button>
+        </div>
+        <span class="note">Fast uses the 8-step distilled LoRA. It has no CFG, so some options may be grayed out.</span>
+      </div>
+
+      <div id="shape-field" class="field">
+        <span class="label">Shape</span>
+        <div id="aspects" class="chips" role="radiogroup" aria-label="Aspect ratio"></div>
+      </div>
+
+      <div class="field img-only">
+        <span class="label">Size <output id="size-out" class="value"></output></span>
+        <input id="megapixels" type="range" min="0" step="1" aria-label="Image size">
+        <span id="size-note" class="note"></span>
+      </div>
+
+      <div class="field img-only">
+        <span class="label">Steps <output id="steps-out" class="value"></output></span>
+        <input id="steps" type="range" min="10" max="80" step="1">
+        <span class="note">More steps give a better image but take longer. <span id="steps-note"></span></span>
+      </div>
+
+      <div id="cfg-field" class="field img-only">
+        <span class="label">Prompt strength (CFG) <output id="cfg-out" class="value"></output></span>
+        <input id="cfg" type="range" min="1" max="8" step="0.5">
+        <span class="note">Higher values follow the prompt more strictly; lower values give the model more freedom. <span id="cfg-note"></span></span>
+      </div>
+
+      <div class="field">
+        <span class="label">Seed</span>
+        <div class="seed">
+          <input id="seed" type="number" inputmode="numeric" min="0">
+          <label class="switch"><input id="random-seed" type="checkbox"><span>Randomize</span></label>
+        </div>
+      </div>
+
+      <div class="field img-only">
+        <span class="label">Images</span>
+        <div class="stepper">
+          <button type="button" data-step="-1" aria-label="Fewer images">−</button>
+          <output id="batch-out">1</output>
+          <button type="button" data-step="1" aria-label="More images">+</button>
+        </div>
+      </div>
+
+      <details class="field advanced img-only">
+        <summary class="label">Advanced</summary>
+        <div class="field">
+          <span class="label">Sigma shift <output id="shift-out" class="value"></output></span>
+          <input id="shift" type="range" min="1" max="10" step="0.5">
+        </div>
+        <div id="slg-field" class="field">
+          <span class="label">Layer skip guidance</span>
+          <div id="slg" class="segmented four" role="radiogroup" aria-label="Layer skip guidance"></div>
+          <span class="note">22 is recommended. Off looks more photographic but small details can fall apart.</span>
+        </div>
+      </details>
+
+      <button type="button" id="reset" class="ghost wide">Default settings</button>
+
+      </div>
+      </details>
+
+      <div class="actions">
+        <button type="submit" id="generate" class="primary">Generate</button>
+      </div>
+    </form>
+
+    <div class="stage">
+      <div id="status" class="status" hidden>
+        <div class="status-line">
+          <span id="status-text">Starting…</span>
+          <button type="button" id="cancel" class="ghost danger">Cancel</button>
+        </div>
+        <div class="bar"><div id="bar-fill"></div></div>
+      </div>
+      <div id="results" class="results">
+        <p class="empty">Your images will appear here.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-gallery" class="gallery" hidden>
+    <div class="gallery-head">
+      <span id="gallery-count"></span>
+      <button type="button" id="refresh" class="ghost">Refresh</button>
+    </div>
+    <div id="grid" class="grid"></div>
+  </section>
+</main>
+
+<div id="viewer" class="viewer" hidden>
+  <div class="viewer-top">
+    <button type="button" id="v-close" class="ghost">Close</button>
+    <span id="v-pos"></span>
+    <span></span>
+  </div>
+  <div class="viewer-img"><img id="v-img" alt=""><video id="v-video" controls playsinline loop hidden></video></div>
+  <p id="v-hint" class="viewer-hint">Press and hold the image to save it to Photos</p>
+  <div class="viewer-bar">
+    <button type="button" id="v-prev" class="ghost" aria-label="Previous">‹</button>
+    <a id="v-save" class="ghost" download hidden>Save</a>
+    <button type="button" id="v-animate" class="ghost" hidden>Animate</button>
+    <button type="button" id="v-reuse" class="ghost">Reuse settings</button>
+    <button type="button" id="v-reveal" class="ghost" title="Opens the file's folder in Explorer on the PC">Show in folder</button>
+    <button type="button" id="v-delete" class="ghost danger">Delete</button>
+    <button type="button" id="v-next" class="ghost" aria-label="Next">›</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="/mobile/assets/app.js?v=56"></script>
+</body>
+</html>
