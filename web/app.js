@@ -19,6 +19,9 @@ const DEFAULTS = {
   mode: "full", tuning: {}, kind: "image",
   video: { prompt: "", aspect: "16:9", mp: 0.4, seconds: 5, turbo: true, steps: 20, start: null },
 };
+// Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
+// scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
+const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked window of a corner café on a rainy evening, smiling softly as she holds a steaming mug in both hands. She wears a cream knit sweater, and her long teal twintails fall over her shoulders. A small chalkboard on the table reads \"Open late\" in white chalk. Warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. Soft anime illustration with clean lines and a muted, warm color palette, seen from the side at eye level in a medium shot. The mood is calm and cozy.";
 // MiniMax H3 is trained on a 768 short edge capped at 768×1344; the official template defaults to ~0.4 MP.
 // 0.98 MP is H3's native canvas (1344×768 at 16:9); Comfy's guide warns 1 MP rounds above it.
 const VIDEO_MP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.98];
@@ -175,8 +178,14 @@ function renderModels() {
   matchModeToModel();
 }
 
+function defaultPrompt() {
+  return settings.mode === "krea2" ? KREA2_PROMPT : DEFAULTS.prompt;
+}
+
 // Krea 2 models get their own mode, and leaving them returns to the MOSS mode used before.
+// An untouched example prompt switches to the one written for the new model.
 function matchModeToModel() {
+  const untouched = settings.prompt === defaultPrompt();
   const krea2 = models.find((m) => m.name === settings.model)?.family === "krea2";
   if (krea2 && settings.mode !== "krea2") {
     settings.mossMode = settings.mode;
@@ -184,6 +193,7 @@ function matchModeToModel() {
   } else if (!krea2 && settings.mode === "krea2") {
     setMode(settings.mossMode || "full");
   }
+  if (untouched) settings.prompt = defaultPrompt();
 }
 
 function syncForm() {
@@ -357,7 +367,7 @@ function bindForm() {
     const video = settings.kind === "video";
     if (!confirm(video ? "Clear the prompt?" : "Replace your prompts with the default example prompt and negative prompt?")) return;
     if (video) settings.video.prompt = DEFAULTS.video.prompt;
-    else Object.assign(settings, { prompt: DEFAULTS.prompt, negative: DEFAULTS.negative });
+    else Object.assign(settings, { prompt: defaultPrompt(), negative: DEFAULTS.negative });
     syncForm();
   };
   $("settings").open = load("moss-studio-settings-open", false);
