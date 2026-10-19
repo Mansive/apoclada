@@ -6,6 +6,7 @@ the page itself, gallery listing, metadata and delete, model downloads and self-
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -332,6 +333,14 @@ async def studio_image_info(request):
             prompt = img.info.get("prompt")
             width, height = img.size
     return web.json_response({"prompt": json.loads(prompt) if prompt else None, "width": width, "height": height})
+
+
+# "Show in folder" opens Explorer on the PC, so it's only offered to a browser on the PC itself,
+# whether it opened the site through localhost or one of the PC's network addresses.
+@routes.get("/studio/host")
+async def studio_host(request):
+    addresses = {"127.0.0.1", "::1", *(info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None))}
+    return web.json_response({"host": request.remote in addresses})
 
 
 # Opens an Explorer window on the PC (not on the device asking) with the file selected.

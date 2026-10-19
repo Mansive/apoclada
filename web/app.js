@@ -1031,6 +1031,7 @@ async function init() {
     for (const v of document.querySelectorAll("video")) if (v !== e.target) v.pause();
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
+  fetch("/studio/host").then((r) => r.json()).then(({ host }) => { $("v-reveal").hidden = !host; }).catch(() => {});
   await loadModels();
   // A fresh install has nothing to generate with yet, so it opens on Setup.
   if (!models.length && !videoFiles) selectTab("setup");
