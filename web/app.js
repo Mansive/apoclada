@@ -14,9 +14,9 @@ const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // MiniMax's H3 prompt guide (VIDEO_PROMPT_WRITING_GUIDE_base_en.md) uses three fields: shots with camera
 // moves and speaker-tagged <d> dialogue, ambient sound, and background score. Filling both sound fields
 // keeps the model from inventing speech. Image-to-video prompts start with START_LINE and a blank line.
-// Later shots start with their cut time (MM:SS.mmm), which has to fall inside the video, so both
-// examples cut to a second shot at 2.1 s to fit lengths from 3 s up.
-const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she blows gently across the mug and smiles. [Shot 2] At 00:02.100, the camera cuts to a close-up of Hatsune Miku's face lit by the warm café light as her eyes drift to the rain outside, and with a soft, bright voice (S1) she says: <d>[English] Just one more cup before I go.</d>
+// Later shots start with their cut time (MM:SS.mmm), which has to fall inside the video, so the
+// examples cut to a second shot early (1.5 s here, 2.1 s with a start image) to fit short lengths.
+const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she blows gently across the mug and smiles. [Shot 2] At 00:01.500, the camera cuts to a close-up of Hatsune Miku's face lit by the warm café light as her eyes drift to the rain outside, and with a soft, bright voice (S1) she says: <d>[English] One more cup.</d>
 
 overall_soundscape: Rain patters steadily against the window glass, the ceramic mug clinks softly on the wooden table, and muffled traffic hums outside.
 
