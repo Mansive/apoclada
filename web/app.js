@@ -150,7 +150,7 @@ let models = [];
 let turboLora = null;
 let videoFiles = null;
 // Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
-let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", hevc_encoder: null, hevc_encoders: [] };
+let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] } };
 // Safari and Chrome 155+ show JPEG XL. Other browsers get .jxl images as PNG copies made by the PC.
 const JXL_PROBE = "data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==";
 let jxlShown = false;
@@ -575,15 +575,9 @@ function buildVideoWorkflow(s) {
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "22": { class_type: "VAEDecodeAudio", inputs: { samples: ["16", 0], vae: ["19", 0] } },
     "23": { class_type: "CreateVideo", inputs: { images: ["17", 0], audio: ["22", 0], fps: 24 } },
-    "18": saveVideoNode(),
+    // Codec and encoder come from Setup.
+    "18": { class_type: "ApocladaSaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", codec: prefs.video_codec, encoder: prefs.video_encoder ?? "software" } },
   };
-}
-
-// Setup's H.265 choice goes through Apoclada's save node; H.264 stays on ComfyUI's SaveVideo.
-function saveVideoNode() {
-  const inputs = { video: ["23", 0], filename_prefix: "studio/h3" };
-  if (prefs.video_codec === "hevc" && prefs.hevc_encoder) return { class_type: "ApocladaSaveVideoHEVC", inputs: { ...inputs, encoder: prefs.hevc_encoder } };
-  return { class_type: "SaveVideo", inputs: { ...inputs, format: "auto", codec: "auto" } };
 }
 
 async function generate() {
@@ -1258,21 +1252,22 @@ async function loadPrefs(change) {
     el("span", { className: "note", textContent: "Applies to new images from every device. Existing images keep their format." }),
     !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC. Install Apoclada's requirements.txt into ComfyUI's Python, then restart ComfyUI." }),
   ].filter(Boolean));
-  // The PC lists the H.265 encoders it can run: an NVIDIA or AMD graphics card's, and x265 on the CPU.
-  const hevc = p.video_codec === "hevc" && Boolean(p.hevc_encoder);
-  const gpu = p.hevc_encoder !== "libx265";
+  // The PC lists the encoders it can run for each codec: an NVIDIA or AMD graphics card's, and the CPU.
+  const hevc = p.video_codec === "hevc";
+  const encoders = p.video_encoders[p.video_codec];
+  const labels = { nvidia: "NVIDIA GPU", amd: "AMD GPU", software: "Software" };
   $("video-format").replaceChildren(...[
     group(
       radio("H.264", "Works everywhere", !hevc, { video_codec: "h264" }),
-      radio("H.265", "Smaller files", hevc, { video_codec: "hevc" }, !p.hevc_encoders.length)),
-    hevc && p.hevc_encoders.length > 1 && group(...p.hevc_encoders.map((e) =>
-      radio(e.label, e.id === "libx265" ? "Smallest files" : "Fastest", e.id === p.hevc_encoder, { hevc_encoder: e.id }))),
+      radio("H.265", "Smaller files", hevc, { video_codec: "hevc" }, !p.video_encoders.hevc.length)),
+    encoders.length > 1 && group(...encoders.map((e) =>
+      radio(labels[e], e === "software" ? "Smallest files" : "Fastest", e === p.video_encoder, { video_encoder: e }))),
     el("span", { className: "note", textContent: !hevc
       ? "H.264 plays in every app and browser."
       : "Safari, and Chrome or Edge on most PCs, play H.265. Some older apps can't." }),
-    hevc && el("span", { className: "note", textContent: gpu
-      ? "The graphics card encodes the video. Very narrow videos use Software instead."
-      : `x265 encodes the video on the CPU, a few seconds slower than a graphics card.${p.hevc_encoders.length > 1 ? "" : " No NVIDIA or AMD video encoder was found."}` }),
+    el("span", { className: "note", textContent: p.video_encoder !== "software"
+      ? `The graphics card encodes the video.${hevc && p.video_encoder === "amd" ? " Very narrow videos use Software instead." : ""}`
+      : `${hevc ? "x265" : "x264"} encodes the video on the CPU, a few seconds slower than a graphics card.${encoders.length > 1 ? "" : " No NVIDIA or AMD video encoder was found."}` }),
     el("span", { className: "note", textContent: "Applies to new videos from every device. Existing videos keep their format." }),
   ].filter(Boolean));
 }
