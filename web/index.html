@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=57">
+<link rel="stylesheet" href="/studio/assets/style.css?v=60">
 </head>
 <body>
 <header class="topbar">
@@ -18,6 +18,7 @@
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="create" aria-selected="true">Create</button>
     <button role="tab" data-tab="gallery" aria-selected="false">Gallery</button>
+    <button role="tab" data-tab="setup" aria-selected="false">Setup</button>
   </nav>
   <span id="conn" class="conn" title="Connection to the PC">●</span>
 </header>
@@ -186,6 +187,18 @@
     </div>
     <div id="grid" class="grid"></div>
   </section>
+
+  <section id="tab-setup" class="setup" hidden>
+    <div class="card">
+      <h2>Models</h2>
+      <p class="note">Downloads go to ComfyUI's models folder on the PC and keep running if you close this page. A stopped download picks up where it left off.</p>
+      <div id="packs" class="packs"></div>
+    </div>
+    <div class="card">
+      <h2>Updates</h2>
+      <div id="updates" class="updates"></div>
+    </div>
+  </section>
 </main>
 
 <div id="viewer" class="viewer" hidden>
@@ -209,6 +222,6 @@
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=57"></script>
+<script src="/studio/assets/app.js?v=60"></script>
 </body>
 </html>

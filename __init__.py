@@ -1,44 +1,82 @@
 """Apoclada Studio: a touch-friendly image and video front end served by ComfyUI at /studio.
 
-Generation goes through ComfyUI's own /prompt, /ws, /view and /interrupt APIs;
-this module only adds the page itself plus gallery listing, metadata and delete.
+Generation goes through ComfyUI's own /prompt, /ws, /view and /interrupt APIs; this module adds
+the page itself, gallery listing, metadata and delete, model downloads and self-updates.
 """
+import asyncio
 import json
 import os
 import subprocess
 import sys
+import time
 from io import BytesIO
 
+import aiohttp
 import av
 from aiohttp import web
 from PIL import Image
 
 import folder_paths
 from comfy.cli_args import args
+from comfyui_version import __version__ as COMFYUI_VERSION
 from server import PromptServer
 
 NODE_CLASS_MAPPINGS = {}
 
-WEB_ROOT = os.path.join(os.path.dirname(__file__), "web")
+PLUGIN_DIR = os.path.dirname(__file__)
+WEB_ROOT = os.path.join(PLUGIN_DIR, "web")
 IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg"}
 VIDEO_EXTS = {".mp4", ".webm", ".mov"}
-MOSS_MODELS_DIR = os.path.join(folder_paths.models_dir, "moss-image")
-# lodestones/MOSS-Image-SFT-8-steps-dmd: 8-step, CFG-free distillation LoRA for MOSS-Image-SFT.
+# Krea 2 support and the native MOSS-Image and MiniMax H3 nodes arrived in ComfyUI 0.41.
+COMFYUI_MIN = "0.41.0"
+
+HF = "https://huggingface.co"
+# Every file Apoclada can download: name -> (models folder, source, size in bytes).
+FILES = {
+    "moss_image_sft_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors", 5413698958),
+    "qwen3.5_9b_int8_convrot.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors", 9748121532),
+    "flux2-vae.safetensors": ("vae", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors", 336211292),
+    # lodestones/MOSS-Image-SFT-8-steps-dmd: 8-step, CFG-free distillation LoRA for MOSS-Image-SFT.
+    "moss-image-sft-8step-dmd.safetensors": ("loras", f"{HF}/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors", 1189176800),
+    "qwen3vl_4b_int8_convrot.safetensors": ("text_encoders", f"{HF}/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors", 4858559240),
+    "qwen_image_vae.safetensors": ("vae", f"{HF}/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors", 253806246),
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", 20970379616),
+    "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", 15687142551),
+    "minimax_h3_video_vae_int8_convrot.safetensors": ("vae", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot.safetensors", 2811065184),
+    "minimax_h3_audio_vae_fp32.safetensors": ("vae", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors", 605254808),
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1956193000),
+}
+MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "flux2-vae.safetensors"}
 FAST_LORA = "moss-image-sft-8step-dmd.safetensors"
 # Krea 2 and its fine-tunes (e.g. lodestones' Kroma) run on ComfyUI's native nodes with the
 # text encoder and VAE from Comfy-Org/Krea-2.
-KREA2_CLIP = "qwen3vl_4b_int8_convrot.safetensors"
-KREA2_VAE = "qwen_image_vae.safetensors"
+KREA2 = {"clip": "qwen3vl_4b_int8_convrot.safetensors", "vae": "qwen_image_vae.safetensors"}
 # Comfy-Org/MiniMax-H3 files used by the official text/image-to-video template.
-H3_FILES = {
-    "unet": ("diffusion_models", "minimax_h3_fl2va_pruned_int8_convrot.safetensors"),
-    "clip": ("text_encoders", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"),
-    "vae": ("vae", "minimax_h3_video_vae_int8_convrot.safetensors"),
-    "audio_vae": ("vae", "minimax_h3_audio_vae_fp32.safetensors"),
-    "lora": ("loras", "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"),
+H3 = {
+    "unet": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "clip": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+    "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
+    "lora": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
 }
+# What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
+# so it's fetched by hand and only its text encoder and VAE come from here.
+PACKS = [
+    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality and Fast modes.", "files": [*MOSS.values(), FAST_LORA]},
+    {"id": "krea2", "name": "Kroma", "about": "Images from lodestones' Krea 2 fine-tune, in 8 steps.", "files": list(KREA2.values()),
+     "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
+    {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt or a start image.", "files": list(H3.values())},
+]
 
 routes = PromptServer.instance.routes
+
+
+def have(name):
+    return name in folder_paths.get_filename_list(FILES[name][0])
+
+
+def krea2_models():
+    return [f for f in folder_paths.get_filename_list("diffusion_models") if "krea2" in f.lower() or "kroma" in f.lower()]
 
 
 # Windows' proactor loop logs a full traceback whenever a client drops a connection without
@@ -91,38 +129,157 @@ routes.static("/studio/assets", WEB_ROOT)
 @routes.get("/studio/models")
 async def studio_models(request):
     models = []
-    if os.path.isdir(MOSS_MODELS_DIR):
-        for name in sorted(os.listdir(MOSS_MODELS_DIR)):
-            path = os.path.join(MOSS_MODELS_DIR, name)
-            if os.path.isdir(os.path.join(path, "transformer")):
-                models.append({"name": name, "path": path})
-    # INT8 single-file transformers run on ComfyUI's native loader and borrow the text encoder
-    # and VAE from a full model folder, preferring the SFT one they were made from.
-    if models:
-        base = next((m for m in models if "sft" in m["name"].lower()), models[0])
-        int8 = [f for f in folder_paths.get_filename_list("diffusion_models") if "moss" in f.lower() and "int8" in f.lower()]
-        for unet in int8:
-            name = f"{base['name']} · INT8" if len(int8) == 1 else f"{base['name']} · {os.path.splitext(unet)[0]}"
-            models.append({"name": name, "path": base["path"], "unet": unet})
-    if KREA2_CLIP in folder_paths.get_filename_list("text_encoders") and KREA2_VAE in folder_paths.get_filename_list("vae"):
-        for unet in folder_paths.get_filename_list("diffusion_models"):
-            if "krea2" in unet.lower() or "kroma" in unet.lower():
-                models.append({"name": os.path.splitext(unet)[0], "unet": unet, "family": "krea2", "clip": KREA2_CLIP, "vae": KREA2_VAE})
+    if all(have(f) for f in MOSS.values()):
+        models.append({"name": "MOSS-Image", "family": "moss", **MOSS})
+    if all(have(f) for f in KREA2.values()):
+        models += [{"name": os.path.splitext(unet)[0], "family": "krea2", "unet": unet, **KREA2} for unet in krea2_models()]
     return web.json_response(models)
 
 
 @routes.get("/studio/fast")
 async def studio_fast(request):
-    return web.json_response({"lora": FAST_LORA if FAST_LORA in folder_paths.get_filename_list("loras") else None})
+    return web.json_response({"lora": FAST_LORA if have(FAST_LORA) else None})
 
 
 # Video mode is offered only when every H3 file is present; the turbo LoRA is optional.
 @routes.get("/studio/video")
 async def studio_video(request):
-    files = {key: name if name in folder_paths.get_filename_list(folder) else None for key, (folder, name) in H3_FILES.items()}
+    files = {key: name if have(name) else None for key, name in H3.items()}
     if not all(files[k] for k in ("unet", "clip", "vae", "audio_vae")):
         return web.json_response(None)
     return web.json_response(files)
+
+
+# One pack downloads at a time, file by file, into a .part file next to its final name. A stopped
+# or failed download resumes where it left off when it's started again.
+download = None
+
+
+def pack_status(pack):
+    missing = [f for f in pack["files"] if not have(f)]
+    manual = pack.get("manual")
+    return {
+        "id": pack["id"], "name": pack["name"], "about": pack["about"],
+        "manual": manual and {**manual, "found": bool(krea2_models())},
+        "size": sum(FILES[f][2] for f in pack["files"]),
+        "missing": sum(FILES[f][2] for f in missing),
+        "installed": not missing and (not manual or bool(krea2_models())),
+    }
+
+
+def model_path(name):
+    folder = FILES[name][0]
+    paths = folder_paths.get_folder_paths(folder)
+    return os.path.join(next((p for p in paths if os.path.basename(p) == folder), paths[0]), name)
+
+
+async def download_pack(pack):
+    names = [f for f in pack["files"] if not have(f)]
+    download.update(total=sum(FILES[f][2] for f in names), done=0)
+    finished = 0
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(sock_connect=30, sock_read=60)) as session:
+        for name in names:
+            _, url, size = FILES[name]
+            path = model_path(name)
+            part = path + ".part"
+            start = os.path.getsize(part) if os.path.exists(part) else 0
+            download.update(file=name, done=finished + start)
+            if start < size:
+                async with session.get(url, headers={"Range": f"bytes={start}-"} if start else {}) as res:
+                    res.raise_for_status()
+                    with open(part, "ab" if res.status == 206 else "wb") as f:
+                        async for chunk in res.content.iter_chunked(1 << 22):
+                            f.write(chunk)
+                            download["done"] = finished + f.tell()
+            if os.path.getsize(part) != size:
+                raise RuntimeError(f"{name} came out at the wrong size; try again")
+            os.replace(part, path)
+            finished += size
+
+
+async def run_download(pack):
+    global download
+    try:
+        await download_pack(pack)
+        download = None
+    except asyncio.CancelledError:
+        download = None
+    except Exception as e:
+        download.update(error=str(e) or type(e).__name__, task=None)
+
+
+@routes.get("/studio/setup")
+async def studio_setup(request):
+    state = download and {k: v for k, v in download.items() if k != "task"}
+    return web.json_response({"packs": [pack_status(p) for p in PACKS], "download": state})
+
+
+@routes.post("/studio/setup/download")
+async def studio_setup_download(request):
+    global download
+    if download and download.get("task"):
+        return web.json_response({"error": "Another download is running"}, status=409)
+    pack_id = (await request.json()).get("pack")
+    pack = next((p for p in PACKS if p["id"] == pack_id), None)
+    if not pack:
+        raise web.HTTPNotFound()
+    download = {"pack": pack["id"], "file": None, "done": 0, "total": 0, "error": None}
+    download["task"] = asyncio.create_task(run_download(pack))
+    return web.json_response({"started": pack["id"]})
+
+
+@routes.post("/studio/setup/cancel")
+async def studio_setup_cancel(request):
+    global download
+    if download and download.get("task"):
+        download["task"].cancel()
+    download = None
+    return web.json_response({"cancelled": True})
+
+
+# Updates come from the git remote this folder was cloned from. The fetch result is kept for an
+# hour so opening the page doesn't hit the network every time.
+update_check = {"time": 0, "behind": 0}
+
+
+async def git(*command):
+    try:
+        proc = await asyncio.create_subprocess_exec("git", *command, cwd=PLUGIN_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except FileNotFoundError:
+        return 1, "Git isn't installed"
+    out, _ = await proc.communicate()
+    return proc.returncode, out.decode(errors="replace").strip()
+
+
+def version_tuple(version):
+    return tuple(int(p) for p in version.split(".")[:3] if p.isdigit())
+
+
+@routes.get("/studio/update")
+async def studio_update_check(request):
+    _, version = await git("log", "-1", "--format=%h · %cs")
+    code, upstream = await git("rev-parse", "--abbrev-ref", "@{upstream}")
+    if code == 0 and (request.rel_url.query.get("check") or time.time() - update_check["time"] > 3600):
+        if (await git("fetch", "--quiet"))[0] == 0:
+            _, behind = await git("rev-list", "--count", "HEAD..@{upstream}")
+            update_check.update(time=time.time(), behind=int(behind or 0))
+    return web.json_response({
+        "version": version if version and "fatal" not in version else None,
+        "source": upstream if code == 0 else None,
+        "behind": update_check["behind"] if code == 0 else 0,
+        "comfyui": COMFYUI_VERSION, "comfyui_min": COMFYUI_MIN,
+        "comfyui_ok": version_tuple(COMFYUI_VERSION) >= version_tuple(COMFYUI_MIN),
+    })
+
+
+@routes.post("/studio/update")
+async def studio_update(request):
+    code, out = await git("pull", "--ff-only")
+    if code != 0:
+        return web.json_response({"error": out}, status=500)
+    update_check["behind"] = 0
+    restart()
+    return web.json_response({"updated": out})
 
 
 def is_video(path):
@@ -201,11 +358,15 @@ subprocess.call(sys.argv[2:])
 """
 
 
-@routes.post("/studio/restart")
-async def studio_restart(request):
+def restart():
     subprocess.Popen([sys.executable, "-I", "-c", RESTART_HELPER, str(args.port), sys.executable, *sys.argv],
                      cwd=os.getcwd(), creationflags=subprocess.CREATE_NEW_CONSOLE)
     PromptServer.instance.loop.call_later(0.5, os._exit, 0)
+
+
+@routes.post("/studio/restart")
+async def studio_restart(request):
+    restart()
     return web.json_response({"restarting": True})
 
 

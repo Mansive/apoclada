@@ -157,7 +157,7 @@ function setMode(mode) {
 function renderModels() {
   $("model").replaceChildren(...models.map((m) => new Option(m.name, m.name)));
   if (!models.some((m) => m.name === settings.model)) {
-    settings.model = (models.find((m) => /sft/i.test(m.name)) || models[0] || {}).name || "";
+    settings.model = models[0]?.name || "";
   }
   matchModeToModel();
 }
@@ -360,23 +360,17 @@ function buildWorkflow(s) {
   const { width, height } = dimensions(s.aspect, s.mp);
   if (model.family === "krea2") return buildKrea2Workflow(s, model, width, height);
   const fast = s.mode === "fast";
-  // INT8 files load into ComfyUI's native MOSS model, which takes raw 0-1 timesteps: ModelSamplingSD3
-  // would scale them by 1000 and produce pure noise, so the shift goes through the AuraFlow node instead.
-  const loaders = model.unet
-    ? {
-        "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
-        "2": { class_type: "MOSSImageHFTextEncoderLoader", inputs: { model_path: model.path, device: "default" } },
-        "3": { class_type: "MOSSImageHFVAELoader", inputs: { model_path: model.path } },
-      }
-    : { "1": { class_type: "MOSSImageHFLoader", inputs: { model_path: model.path, weight_dtype: "default", text_device: "default" } } };
-  const clip = model.unet ? ["2", 0] : ["1", 1];
+  // ComfyUI's native MOSS model takes raw 0-1 timesteps: ModelSamplingSD3 would scale them by 1000
+  // and produce pure noise, so the shift goes through the AuraFlow node instead.
   return {
-    ...loaders,
+    "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "moss_image", device: "default" } },
+    "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
     ...(fast && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: fastLora, strength_model: 1, model: ["1", 0] } } }),
-    "4": { class_type: "CLIPTextEncode", inputs: { text: s.prompt, clip } },
-    "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip } },
+    "4": { class_type: "CLIPTextEncode", inputs: { text: s.prompt, clip: ["2", 0] } },
+    "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
     "6": { class_type: "EmptyFlux2LatentImage", inputs: { width, height, batch_size: s.batch } },
-    "15": { class_type: model.unet ? "ModelSamplingAuraFlow" : "ModelSamplingSD3", inputs: { shift: s.shift, model: [fast ? "20" : "1", 0] } },
+    "15": { class_type: "ModelSamplingAuraFlow", inputs: { shift: s.shift, model: [fast ? "20" : "1", 0] } },
     "13": {
       class_type: "SkipLayerGuidanceDiTSimple",
       inputs: { double_layers: "", single_layers: s.slgLayer, start_percent: 0, end_percent: 1, model: ["15", 0] },
@@ -388,7 +382,7 @@ function buildWorkflow(s) {
         model: ["13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
-    "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: model.unet ? ["3", 0] : ["1", 2] } },
+    "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "18": { class_type: "SaveImage", inputs: { filename_prefix: "studio/moss", images: ["17", 0] } },
   };
 }
@@ -449,8 +443,8 @@ function buildVideoWorkflow(s) {
 async function generate() {
   const video = settings.kind === "video";
   if (!(video ? settings.video.prompt : settings.prompt).trim()) { toast("Write a prompt first"); $("prompt").focus(); return; }
-  if (!video && !models.length) { toast("No MOSS-Image model found on the PC"); return; }
-  if (video && !videoFiles) { toast("The MiniMax H3 files are missing on the PC"); return; }
+  if (!video && !models.length) { toast("No image model yet. Download one in Setup."); return; }
+  if (video && !videoFiles) { toast("The MiniMax H3 files are missing. Download them in Setup."); return; }
   if (settings.randomSeed) settings.seed = Math.floor(Math.random() * 2 ** 48);
   syncForm();
   const res = await fetch("/prompt", {
@@ -817,14 +811,15 @@ async function reuseCurrent() {
   for (const n of Object.values(graph)) {
     if (n.class_type === "ModelSamplingSD3" || n.class_type === "ModelSamplingAuraFlow") settings.shift = n.inputs.shift;
     if (n.class_type === "SkipLayerGuidanceDiTSimple") settings.slgLayer = String(n.inputs.single_layers).trim();
+    // Images from before the switch to native files used the moss-image node's full model folder.
     if (n.class_type === "MOSSImageHFLoader") {
-      const m = models.find((x) => !x.unet && x.path.replaceAll("\\", "/").toLowerCase() === String(n.inputs.model_path).replaceAll("\\", "/").toLowerCase());
+      const m = models.find((x) => x.family === "moss");
       if (m) settings.model = m.name;
     }
     if (n.class_type === "UNETLoader") {
       const m = models.find((x) => x.unet === n.inputs.unet_name);
       if (m) settings.model = m.name;
-      else toast("This image used an INT8 model that is no longer on the PC");
+      else toast("This image used a model that is no longer on the PC");
     }
   }
   if (models.find((m) => m.name === settings.model)?.family === "krea2") settings.mode = "krea2";
@@ -904,6 +899,100 @@ function bindViewer() {
   });
 }
 
+/* ---------- setup ---------- */
+
+let setupTimer = null;
+let downloading = false;
+
+function gb(bytes) { return `${(bytes / 1e9).toFixed(1)} GB`; }
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children.filter((c) => c !== null && c !== false));
+  return node;
+}
+
+// Polls while a download runs, on any tab, so new models show up in Create as soon as they land.
+async function loadSetup() {
+  clearTimeout(setupTimer);
+  const setup = await fetch("/studio/setup").then((r) => r.json()).catch(() => null);
+  if (!setup) return;
+  const dl = setup.download;
+  const active = Boolean(dl && !dl.error);
+  if (downloading && !active) await loadModels();
+  downloading = active;
+  $("packs").replaceChildren(...setup.packs.map((p) => renderPack(p, dl, active)));
+  if (active) setupTimer = setTimeout(loadSetup, 2000);
+}
+
+function renderPack(p, dl, active) {
+  const mine = dl?.pack === p.id;
+  const running = mine && active;
+  const state = p.installed ? "Installed"
+    : running ? (dl.total ? `${Math.floor((dl.done / dl.total) * 100)}% · ${gb(dl.done)} of ${gb(dl.total)}` : "Starting…")
+    : p.missing ? `${gb(p.missing)} to download` : "";
+  const button = running
+    ? el("button", { type: "button", className: "ghost danger", textContent: "Stop", onclick: () => setupAction("cancel") })
+    : p.missing > 0 && el("button", {
+      type: "button", className: "ghost", disabled: active,
+      textContent: mine && dl.error ? "Retry" : "Download",
+      onclick: () => setupAction("download", p.id),
+    });
+  const manual = p.manual && !p.manual.found && el("span", { className: "note" },
+    "The model itself comes from Civitai, which needs an account. Download ",
+    el("a", { href: p.manual.url, target: "_blank", rel: "noopener", textContent: p.manual.file }),
+    ` and put it in ComfyUI's ${p.manual.folder} folder.`);
+  return el("div", { className: "pack" },
+    el("div", { className: "pack-head" },
+      el("span", { className: "pack-name", textContent: p.name }),
+      el("span", { className: `pack-state${p.installed ? " ok" : ""}`, textContent: state })),
+    el("span", { className: "note", textContent: p.about }),
+    running && el("div", { className: "bar" }, el("div", { style: `width: ${dl.total ? (dl.done / dl.total) * 100 : 0}%` })),
+    mine && dl.error && el("span", { className: "warn", textContent: `Download stopped: ${dl.error}` }),
+    manual,
+    button && el("div", { className: "actions-row" }, button));
+}
+
+async function setupAction(action, pack) {
+  const res = await fetch(`/studio/setup/${action}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pack }),
+  }).catch(() => null);
+  if (!res) toast("Can't reach the PC");
+  else if (!res.ok) toast((await res.json().catch(() => ({}))).error || "That didn't work");
+  if (res?.ok && action === "download") downloading = true;
+  loadSetup();
+}
+
+async function loadUpdates(check) {
+  const u = await fetch(`/studio/update${check ? "?check=1" : ""}`).then((r) => r.json()).catch(() => null);
+  if (!u) return;
+  document.querySelector(".tabs [data-tab=setup]").classList.toggle("badge", u.behind > 0 || !u.comfyui_ok);
+  const status = !u.source
+    ? "Updates aren't set up: this copy has no git source to update from."
+    : u.behind ? `An update is available (${u.behind} change${u.behind === 1 ? "" : "s"}).` : "Up to date.";
+  const button = u.source && (u.behind
+    ? el("button", { type: "button", className: "ghost", textContent: "Update and restart", onclick: runUpdate })
+    : el("button", { type: "button", className: "ghost", textContent: "Check now", onclick: () => loadUpdates(true) }));
+  $("updates").replaceChildren(...[
+    el("span", {}, `Apoclada Studio ${u.version || ""}`.trim(), el("br"), el("span", { className: "note", textContent: status })),
+    el("span", {}, `ComfyUI ${u.comfyui}`),
+    !u.comfyui_ok && el("span", { className: "warn", textContent: `Apoclada needs ComfyUI ${u.comfyui_min} or newer. Update ComfyUI before generating.` }),
+    button && el("div", { className: "actions-row" }, button),
+  ].filter(Boolean));
+}
+
+async function runUpdate() {
+  if (!confirm("Updating restarts ComfyUI on the PC. Anything generating now is lost.")) return;
+  const res = await fetch("/studio/update", { method: "POST" }).catch(() => null);
+  if (!res) { toast("Can't reach the PC"); return; }
+  if (!res.ok) { toast(((await res.json().catch(() => ({}))).error || "The update failed").split("\n")[0]); return; }
+  toast("Updated. Restarting ComfyUI…");
+  // The page reloads once the restarted server answers, picking up the new version.
+  await new Promise((r) => setTimeout(r, 4000));
+  while (!(await fetch("/studio/update").then((r) => r.ok).catch(() => false))) await new Promise((r) => setTimeout(r, 2000));
+  location.reload();
+}
+
 /* ---------- misc ---------- */
 
 function selectTab(name) {
@@ -911,7 +1000,9 @@ function selectTab(name) {
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", b.dataset.tab === name);
   $("tab-create").hidden = name !== "create";
   $("tab-gallery").hidden = name !== "gallery";
+  $("tab-setup").hidden = name !== "setup";
   if (name === "gallery") loadGallery();
+  if (name === "setup") { loadSetup(); loadUpdates(); }
 }
 
 let toastTimer;
@@ -933,16 +1024,24 @@ async function init() {
     for (const v of document.querySelectorAll("video")) if (v !== e.target) v.pause();
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
+  await loadModels();
+  // A fresh install has nothing to generate with yet, so it opens on Setup.
+  if (!models.length && !videoFiles) selectTab("setup");
+  else { loadSetup(); loadUpdates(); }
+  connect();
+}
+
+async function loadModels() {
   [models, { lora: fastLora }, videoFiles] = await Promise.all([
     fetch("/studio/models").then((r) => r.json()).catch(() => []),
     fetch("/studio/fast").then((r) => r.json()).catch(() => ({ lora: null })),
     fetch("/studio/video").then((r) => r.json()).catch(() => null),
   ]);
-  if (!fastLora) setMode("full");
+  if (!fastLora && settings.mode === "fast") setMode("full");
   if (!videoFiles) settings.kind = "image";
+  else if (!models.length) settings.kind = "video";
   renderModels();
   syncForm();
-  connect();
 }
 
 init();
