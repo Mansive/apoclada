@@ -931,7 +931,7 @@ async function showInfo() {
   const info = await imageInfo(img);
   if (viewer.list[viewer.index] !== img) return;
   const rows = infoRows(info, img).filter(([, value]) => value !== null && value !== undefined && value !== "");
-  $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, ...[value].flat()))));
+  $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, value))));
 }
 
 function infoRows(info, img) {
@@ -959,20 +959,11 @@ function infoRows(info, img) {
   if (!s) return [["Settings", "This file has no saved settings."], ["File", img.filename]];
   const text = linked(s.positive)?.inputs.text;
   const rewriter = linked(text);
-  const enhanced = rewriter && (info.enhanced_prompt ?? "Not saved in this file.");
-  const useEnhanced = el("button", { type: "button", className: "ghost", textContent: "Use as prompt" });
-  useEnhanced.onclick = () => {
-    Object.assign(settings, { prompt: enhanced, enhance: false, kind: "image" });
-    syncForm();
-    closeViewer();
-    selectTab("create");
-    toast("Enhanced prompt copied to the prompt box. Enhance prompt is now off.");
-  };
   const unet = find("UNETLoader")?.unet_name.replace(/\.safetensors$/, "") ?? (find("MOSSImageHFLoader") && "MOSS-Image");
   const slg = find("SkipLayerGuidanceDiTSimple")?.single_layers;
   return [
     [rewriter ? "Original prompt" : "Prompt", rewriter ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text],
-    ["Enhanced prompt", enhanced && (info.enhanced_prompt ? [enhanced, useEnhanced] : enhanced)],
+    ["Enhanced prompt", rewriter && (info.enhanced_prompt ?? "Not saved in this file.")],
     ["Negative prompt", s.cfg > 1 ? linked(s.negative)?.inputs.text : null],
     ["Model", unet && unet + turbo],
     ["Size", size],

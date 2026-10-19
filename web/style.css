@@ -222,7 +222,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .viewer-info dl { margin: 0; display: grid; gap: 14px; }
 .viewer-info dt { font-size: 13px; font-weight: 600; color: oklch(1 0 0 / 0.6); margin-bottom: 4px; }
 .viewer-info dd { margin: 0; font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.viewer-info dd button { display: block; margin-top: 8px; }
 @media (min-width: 700px) {
   .viewer-info {
     top: 0; left: auto; width: 360px; max-height: none; border: 0; border-left: 1px solid oklch(1 0 0 / 0.15); border-radius: 0;
