@@ -100,11 +100,16 @@ const MOSS_NOTES = {
   sizeNote: "1 to 2 MP is recommended. Other sizes work but are less reliable.",
   cfgNote: "3 suits long prompts. Try 4 to 6 for short prompts.",
 };
+const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
 const MODES = {
-  full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22" }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
-  turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "" }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
+  full: {
+    tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.",
+    samplerNote: "Euler is what the MOSS authors use. ComfyUI's template uses er_sde and simple at 25 steps and CFG 2.5.", ...MOSS_NOTES,
+  },
+  turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", samplerNote: "Euler is what the MOSS authors use.", ...MOSS_NOTES },
   krea2: {
-    tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "" }, steps: [4, 16], note: "8 to 12 is recommended.",
+    tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "", sampler: "euler", scheduler: "simple" }, steps: [4, 16], note: "8 to 12 is recommended.",
+    samplerNote: "Euler and simple follow ComfyUI's Krea 2 template.",
     sizeNote: "1 MP is the official default.",
     cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
   },
@@ -138,6 +143,9 @@ if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder
 // The 8-step mode was saved as "fast" before it was renamed to Turbo.
 for (const k of ["mode", "mossMode"]) if (settings[k] === "fast") settings[k] = "turbo";
 if (settings.tuning?.fast) { settings.tuning.turbo = settings.tuning.fast; delete settings.tuning.fast; }
+// Settings saved before the sampler could be picked get the mode's default.
+settings.sampler ??= MODES[settings.mode].tuning.sampler;
+settings.scheduler ??= MODES[settings.mode].tuning.scheduler;
 let models = [];
 let turboLora = null;
 let videoFiles = null;
@@ -323,6 +331,9 @@ function syncForm() {
   $("shift").value = settings.shift;
   $("shift-out").textContent = Number(settings.shift).toFixed(krea2 ? 2 : 1);
   for (const b of $("slg").children) b.setAttribute("aria-checked", b.dataset.layer === settings.slgLayer);
+  $("sampler").value = settings.sampler;
+  $("scheduler").value = settings.scheduler;
+  $("sampler-note").textContent = mode.samplerNote;
   save(SETTINGS_KEY, settings);
 }
 
@@ -424,6 +435,8 @@ function bindForm() {
   $("steps").oninput = (e) => { settings.steps = Number(e.target.value); syncForm(); };
   $("cfg").oninput = (e) => { settings.cfg = Number(e.target.value); syncForm(); };
   $("shift").oninput = (e) => { settings.shift = Number(e.target.value); syncForm(); };
+  $("sampler").onchange = (e) => { settings.sampler = e.target.value; syncForm(); };
+  $("scheduler").onchange = (e) => { settings.scheduler = e.target.value; syncForm(); };
   $("seed").onchange = (e) => { settings.seed = Math.max(0, Math.floor(Number(e.target.value) || 0)); syncForm(); };
   $("random-seed").onchange = (e) => { settings.randomSeed = e.target.checked; syncForm(); };
   $("enhance").onchange = (e) => { settings.enhance = e.target.checked; syncForm(); };
@@ -481,7 +494,7 @@ function buildWorkflow(s) {
     "16": {
       class_type: "KSampler",
       inputs: {
-        seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: "euler", scheduler: "sgm_uniform", denoise: 1,
+        seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: s.sampler, scheduler: s.scheduler, denoise: 1,
         model: ["13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
@@ -526,7 +539,7 @@ function buildKrea2Workflow(s, model, width, height) {
     "16": {
       class_type: "KSampler",
       inputs: {
-        seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1,
+        seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: s.sampler, scheduler: s.scheduler, denoise: 1,
         model: ["15", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
@@ -996,6 +1009,8 @@ async function reuseCurrent() {
   settings.negative = node(s.negative)?.inputs.text ?? "";
   settings.steps = s.steps;
   settings.cfg = s.cfg;
+  settings.sampler = s.sampler_name;
+  settings.scheduler = s.scheduler;
   settings.seed = s.seed;
   settings.randomSeed = false;
   const latent = node(s.latent_image)?.inputs;
@@ -1280,11 +1295,17 @@ async function init() {
 }
 
 async function loadModels() {
-  [models, { lora: turboLora }, videoFiles] = await Promise.all([
+  let ksampler;
+  [models, { lora: turboLora }, videoFiles, ksampler] = await Promise.all([
     fetch("/studio/models").then((r) => r.json()).catch(() => []),
     fetch("/studio/turbo").then((r) => r.json()).catch(() => ({ lora: null })),
     fetch("/studio/video").then((r) => r.json()).catch(() => null),
+    fetch("/object_info/KSampler").then((r) => r.json()).catch(() => null),
   ]);
+  // The lists come from ComfyUI, so samplers added by other custom nodes show up too.
+  const { sampler_name, scheduler } = ksampler?.KSampler.input.required ?? {};
+  $("sampler").replaceChildren(...(sampler_name?.[0] ?? [settings.sampler]).map((n) => new Option(n, n)));
+  $("scheduler").replaceChildren(...(scheduler?.[0] ?? [settings.scheduler]).map((n) => new Option(n, n)));
   if (!turboLora && settings.mode === "turbo") setMode("full");
   if (!videoFiles) settings.kind = "image";
   else if (!models.length) settings.kind = "video";
