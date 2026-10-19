@@ -61,6 +61,8 @@ let settings = { ...DEFAULTS, ...(load(SETTINGS_KEY, null) || { prompt: v1?.prom
 if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg artifact") settings.negative = DEFAULTS.negative;
 settings.video = { ...DEFAULTS.video, ...settings.video };
 if (settings.video.mp === 1) settings.video.mp = 0.98;
+// Start images moved from input/mobile to input/studio with the rename to Apoclada Studio.
+if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder = "studio";
 let models = [];
 let fastLora = null;
 let videoFiles = null;
@@ -275,11 +277,11 @@ function imageSize(url) {
   });
 }
 
-// Start images go into ComfyUI's input folder (input/mobile), where LoadImage reads them.
+// Start images go into ComfyUI's input folder (input/studio), where LoadImage reads them.
 async function setStartImage(file) {
   const form = new FormData();
   form.append("image", file);
-  form.append("subfolder", "mobile");
+  form.append("subfolder", "studio");
   const res = await fetch("/upload/image", { method: "POST", body: form }).catch(() => null);
   if (!res || !res.ok) { toast("Couldn't upload the image"); return false; }
   const { name, subfolder } = await res.json();
@@ -387,7 +389,7 @@ function buildWorkflow(s) {
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: model.unet ? ["3", 0] : ["1", 2] } },
-    "18": { class_type: "SaveImage", inputs: { filename_prefix: "mobile/moss", images: ["17", 0] } },
+    "18": { class_type: "SaveImage", inputs: { filename_prefix: "studio/moss", images: ["17", 0] } },
   };
 }
 
@@ -410,7 +412,7 @@ function buildKrea2Workflow(s, model, width, height) {
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
-    "18": { class_type: "SaveImage", inputs: { filename_prefix: "mobile/krea2", images: ["17", 0] } },
+    "18": { class_type: "SaveImage", inputs: { filename_prefix: "studio/krea2", images: ["17", 0] } },
   };
 }
 
@@ -440,7 +442,7 @@ function buildVideoWorkflow(s) {
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "22": { class_type: "VAEDecodeAudio", inputs: { samples: ["16", 0], vae: ["19", 0] } },
     "23": { class_type: "CreateVideo", inputs: { images: ["17", 0], audio: ["22", 0], fps: 24 } },
-    "18": { class_type: "SaveVideo", inputs: { video: ["23", 0], filename_prefix: "mobile/h3", format: "auto", codec: "auto" } },
+    "18": { class_type: "SaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", format: "auto", codec: "auto" } },
   };
 }
 
@@ -486,7 +488,7 @@ async function cancelAll() {
 // Restarting it stops the GPU at once; the websocket reconnects and resync() clears the lost job.
 async function forceStop() {
   if (!confirm("Force stop restarts ComfyUI on the PC. The video is lost and the models load again on the next run (about a minute).")) return;
-  const res = await fetch("/mobile/restart", { method: "POST" }).catch(() => null);
+  const res = await fetch("/studio/restart", { method: "POST" }).catch(() => null);
   toast(res && res.ok ? "Restarting ComfyUI…" : "Can't reach the PC");
 }
 
@@ -525,7 +527,7 @@ function imageKey(img) {
 }
 
 function thumbUrl(img) {
-  return `/mobile/images/thumb?${new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "", t: img.mtime })}`;
+  return `/studio/images/thumb?${new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "", t: img.mtime })}`;
 }
 
 async function collectResult(id) {
@@ -674,7 +676,7 @@ async function resync() {
 /* ---------- gallery & viewer ---------- */
 
 async function loadGallery() {
-  gallery = await fetch("/mobile/images").then((r) => r.json()).catch(() => []);
+  gallery = await fetch("/studio/images").then((r) => r.json()).catch(() => []);
   $("gallery-count").textContent = `${gallery.length} item${gallery.length === 1 ? "" : "s"}`;
   if (!gallery.length) {
     const p = document.createElement("p");
@@ -759,7 +761,7 @@ function step(delta) {
 async function deleteCurrent() {
   const img = viewer.list[viewer.index];
   if (!img) return;
-  const res = await fetch("/mobile/images/delete", {
+  const res = await fetch("/studio/images/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(img),
@@ -775,7 +777,7 @@ async function deleteCurrent() {
 
 async function revealCurrent() {
   const img = viewer.list[viewer.index];
-  const res = await fetch("/mobile/images/reveal", {
+  const res = await fetch("/studio/images/reveal", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename: img.filename, subfolder: img.subfolder || "" }),
@@ -786,7 +788,7 @@ async function revealCurrent() {
 async function reuseCurrent() {
   const img = viewer.list[viewer.index];
   const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "" });
-  const info = await fetch(`/mobile/images/info?${q}`).then((r) => r.json()).catch(() => null);
+  const info = await fetch(`/studio/images/info?${q}`).then((r) => r.json()).catch(() => null);
   const graph = info?.prompt;
   const h3 = graph && Object.values(graph).find((n) => n.class_type === "MiniMaxH3ImageToVideo");
   if (h3) { reuseVideo(graph, h3.inputs); return; }
@@ -847,7 +849,8 @@ function reuseVideo(graph, h3) {
   const start = Array.isArray(h3.first_frame) ? graph[h3.first_frame[0]]?.inputs.image : null;
   if (start) {
     const cut = start.lastIndexOf("/");
-    v.start = { subfolder: start.slice(0, Math.max(cut, 0)), name: start.slice(cut + 1), width: h3.width, height: h3.height };
+    const subfolder = start.slice(0, Math.max(cut, 0));
+    v.start = { subfolder: subfolder === "mobile" ? "studio" : subfolder, name: start.slice(cut + 1), width: h3.width, height: h3.height };
   } else {
     const ratio = Math.log(h3.width / h3.height);
     v.start = null;
@@ -931,9 +934,9 @@ async function init() {
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
   [models, { lora: fastLora }, videoFiles] = await Promise.all([
-    fetch("/mobile/models").then((r) => r.json()).catch(() => []),
-    fetch("/mobile/fast").then((r) => r.json()).catch(() => ({ lora: null })),
-    fetch("/mobile/video").then((r) => r.json()).catch(() => null),
+    fetch("/studio/models").then((r) => r.json()).catch(() => []),
+    fetch("/studio/fast").then((r) => r.json()).catch(() => ({ lora: null })),
+    fetch("/studio/video").then((r) => r.json()).catch(() => null),
   ]);
   if (!fastLora) setMode("full");
   if (!videoFiles) settings.kind = "image";

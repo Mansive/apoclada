@@ -1,4 +1,4 @@
-"""Apoclada Studio: a touch-friendly image and video front end served by ComfyUI at /mobile.
+"""Apoclada Studio: a touch-friendly image and video front end served by ComfyUI at /studio.
 
 Generation goes through ComfyUI's own /prompt, /ws, /view and /interrupt APIs;
 this module only adds the page itself plus gallery listing, metadata and delete.
@@ -54,20 +54,20 @@ PromptServer.instance.loop.set_exception_handler(ignore_client_resets)
 # ComfyUI sends a job's progress, previews and results only to the browser that queued it. Copying
 # them to every other Apoclada Studio page (client ids starting "moss-") lets the iPad follow a job
 # started on the PC, and the other way round. ComfyUI's own editor tabs get nothing extra.
-MOBILE_CLIENT_PREFIX = "moss-"
+STUDIO_CLIENT_PREFIX = "moss-"
 
 
-def copy_to_mobile_clients(send):
+def copy_to_studio_clients(send):
     async def send_and_copy(event, data, sid=None):
         await send(event, data, sid)
         if sid is not None:
-            for other in [s for s in PromptServer.instance.sockets if s != sid and s.startswith(MOBILE_CLIENT_PREFIX)]:
+            for other in [s for s in PromptServer.instance.sockets if s != sid and s.startswith(STUDIO_CLIENT_PREFIX)]:
                 await send(event, data, other)
     return send_and_copy
 
 
-PromptServer.instance.send_json = copy_to_mobile_clients(PromptServer.instance.send_json)
-PromptServer.instance.send_bytes = copy_to_mobile_clients(PromptServer.instance.send_bytes)
+PromptServer.instance.send_json = copy_to_studio_clients(PromptServer.instance.send_json)
+PromptServer.instance.send_bytes = copy_to_studio_clients(PromptServer.instance.send_bytes)
 
 
 def output_file(subfolder, filename):
@@ -80,16 +80,16 @@ def output_file(subfolder, filename):
     return path
 
 
-@routes.get("/mobile")
-async def mobile_index(request):
+@routes.get("/studio")
+async def studio_index(request):
     return web.FileResponse(os.path.join(WEB_ROOT, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
-routes.static("/mobile/assets", WEB_ROOT)
+routes.static("/studio/assets", WEB_ROOT)
 
 
-@routes.get("/mobile/models")
-async def mobile_models(request):
+@routes.get("/studio/models")
+async def studio_models(request):
     models = []
     if os.path.isdir(MOSS_MODELS_DIR):
         for name in sorted(os.listdir(MOSS_MODELS_DIR)):
@@ -111,14 +111,14 @@ async def mobile_models(request):
     return web.json_response(models)
 
 
-@routes.get("/mobile/fast")
-async def mobile_fast(request):
+@routes.get("/studio/fast")
+async def studio_fast(request):
     return web.json_response({"lora": FAST_LORA if FAST_LORA in folder_paths.get_filename_list("loras") else None})
 
 
 # Video mode is offered only when every H3 file is present; the turbo LoRA is optional.
-@routes.get("/mobile/video")
-async def mobile_video(request):
+@routes.get("/studio/video")
+async def studio_video(request):
     files = {key: name if name in folder_paths.get_filename_list(folder) else None for key, (folder, name) in H3_FILES.items()}
     if not all(files[k] for k in ("unet", "clip", "vae", "audio_vae")):
         return web.json_response(None)
@@ -129,8 +129,8 @@ def is_video(path):
     return os.path.splitext(path)[1].lower() in VIDEO_EXTS
 
 
-@routes.get("/mobile/images")
-async def mobile_images(request):
+@routes.get("/studio/images")
+async def studio_images(request):
     output_dir = folder_paths.get_output_directory()
     images = []
     for dirpath, _, files in os.walk(output_dir):
@@ -152,8 +152,8 @@ def first_frame(path):
         return next(container.decode(video=0)).to_image()
 
 
-@routes.get("/mobile/images/thumb")
-async def mobile_image_thumb(request):
+@routes.get("/studio/images/thumb")
+async def studio_image_thumb(request):
     path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
     with (first_frame(path) if is_video(path) else Image.open(path)) as img:
         img.thumbnail((384, 384))
@@ -162,8 +162,8 @@ async def mobile_image_thumb(request):
     return web.Response(body=buffer.getvalue(), content_type="image/webp", headers={"Cache-Control": "max-age=86400"})
 
 
-@routes.get("/mobile/images/info")
-async def mobile_image_info(request):
+@routes.get("/studio/images/info")
+async def studio_image_info(request):
     path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
     if is_video(path):
         with av.open(path) as container:
@@ -178,8 +178,8 @@ async def mobile_image_info(request):
 
 
 # Opens an Explorer window on the PC (not on the device asking) with the file selected.
-@routes.post("/mobile/images/reveal")
-async def mobile_image_reveal(request):
+@routes.post("/studio/images/reveal")
+async def studio_image_reveal(request):
     data = await request.json()
     path = output_file(data.get("subfolder", ""), data.get("filename", ""))
     subprocess.Popen(["explorer", f"/select,{path}"])
@@ -201,16 +201,16 @@ subprocess.call(sys.argv[2:])
 """
 
 
-@routes.post("/mobile/restart")
-async def mobile_restart(request):
+@routes.post("/studio/restart")
+async def studio_restart(request):
     subprocess.Popen([sys.executable, "-I", "-c", RESTART_HELPER, str(args.port), sys.executable, *sys.argv],
                      cwd=os.getcwd(), creationflags=subprocess.CREATE_NEW_CONSOLE)
     PromptServer.instance.loop.call_later(0.5, os._exit, 0)
     return web.json_response({"restarting": True})
 
 
-@routes.post("/mobile/images/delete")
-async def mobile_image_delete(request):
+@routes.post("/studio/images/delete")
+async def studio_image_delete(request):
     data = await request.json()
     os.remove(output_file(data.get("subfolder", ""), data.get("filename", "")))
     return web.json_response({"deleted": data.get("filename")})
