@@ -11,13 +11,22 @@ const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // framing, lighting and mood, with exact quoted text for lettering. The guide doesn't spell out score
 // or year tags, so those follow Anima, whose order it matches. No artist tag: users report @artist
 // tags barely work on MOSS.
+// MiniMax's H3 prompt guide (VIDEO_PROMPT_WRITING_GUIDE_base_en.md) uses three fields: shots with camera
+// moves and speaker-tagged <d> dialogue, ambient sound, and background score. Filling both sound fields
+// keeps the model from inventing speech. Image-to-video prompts start with START_LINE and a blank line.
+const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she blows gently across the mug, smiles, and with a soft, bright voice (S1) says: <d>[English] Just one more cup before I go.</d>
+
+overall_soundscape: Rain patters steadily against the window glass, the ceramic mug clinks softly on the wooden table, and muffled traffic hums outside.
+
+non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
+const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
   randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "",
   mode: "full", tuning: {}, kind: "image",
-  video: { prompt: "", aspect: "16:9", mp: 0.4, seconds: 5, turbo: true, steps: 20, start: null },
+  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, turbo: true, steps: 20, start: null },
 };
 // Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
 // scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
@@ -27,7 +36,7 @@ const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked wi
 const VIDEO_MP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.98];
 const PROMPT_HINTS = {
   image: "Describe the image. Put any text you want written in the picture inside quotes, e.g. a café sign that says \"Open late\"",
-  video: "Describe the scene, how things move and what you hear, e.g. a fox trots through snow at sunset, the camera tracks alongside, wind and crunching snow",
+  video: "Use MiniMax's three fields: integrated_multimodal_description: [Shot 1] the scene, action and camera, with speech as (S1) says: <d>[English] Hello.</d>, then overall_soundscape: ambient sound, then non_diegetic_music: background music or N/A. Tap Default prompts for an example.",
 };
 // Per-mode sampler settings. Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without
 // CFG, so layer skip guidance (which acts on the uncond pass) is off. Shift 5 tested best.
@@ -67,6 +76,8 @@ const clientId = `moss-${Math.random().toString(36).slice(2)}${Date.now().toStri
 let settings = { ...DEFAULTS, ...load(SETTINGS_KEY, null) };
 if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg artifact") settings.negative = DEFAULTS.negative;
 settings.video = { ...DEFAULTS.video, ...settings.video };
+// The video prompt started out empty; an empty one can't be generated, so it gets the example.
+settings.video.prompt ||= DEFAULTS.video.prompt;
 if (settings.video.mp === 1) settings.video.mp = 0.98;
 // Start images moved from input/mobile to input/studio with the rename to Apoclada Studio.
 if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder = "studio";
@@ -365,7 +376,7 @@ function bindForm() {
   };
   $("reset-prompts").onclick = () => {
     const video = settings.kind === "video";
-    if (!confirm(video ? "Clear the prompt?" : "Replace your prompts with the default example prompt and negative prompt?")) return;
+    if (!confirm(video ? "Replace your prompt with the default example prompt?" : "Replace your prompts with the default example prompt and negative prompt?")) return;
     if (video) settings.video.prompt = DEFAULTS.video.prompt;
     else Object.assign(settings, { prompt: defaultPrompt(), negative: DEFAULTS.negative });
     syncForm();
@@ -455,7 +466,7 @@ function buildVideoWorkflow(s) {
     ...(v.start && { "21": { class_type: "LoadImage", inputs: { image: `${v.start.subfolder}/${v.start.name}` } } }),
     "4": {
       class_type: "MiniMaxH3ImageToVideo",
-      inputs: { clip: ["2", 0], vae: ["3", 0], prompt: v.prompt, width, height, length: videoLength(v.seconds), ...(v.start && { first_frame: ["21", 0] }) },
+      inputs: { clip: ["2", 0], vae: ["3", 0], prompt: v.start && !v.prompt.includes("<Picture 1>") ? `${START_LINE}\n\n${v.prompt}` : v.prompt, width, height, length: videoLength(v.seconds), ...(v.start && { first_frame: ["21", 0] }) },
     },
     "7": { class_type: "RandomNoise", inputs: { noise_seed: s.seed } },
     "8": { class_type: "KSamplerSelect", inputs: { sampler_name: "res_multistep" } },
@@ -874,7 +885,7 @@ function reuseVideo(graph, h3) {
   if (!videoFiles) { toast("The MiniMax H3 files are missing on the PC"); return; }
   const v = settings.video;
   const nodes = Object.values(graph);
-  v.prompt = h3.prompt;
+  v.prompt = h3.prompt.replace(`${START_LINE}\n\n`, "");
   v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24)));
   v.turbo = nodes.some((n) => n.class_type === "LoraLoaderModelOnly");
   const scheduler = nodes.find((n) => n.class_type === "BasicScheduler");
