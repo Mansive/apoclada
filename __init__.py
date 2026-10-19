@@ -393,7 +393,7 @@ async def studio_image_thumb(request):
     with (first_frame(path) if is_video(path) else Image.open(path)) as img:
         img.thumbnail((384, 384))
         buffer = BytesIO()
-        img.convert("RGB").save(buffer, format="webp", quality=75)
+        img.convert("RGB").save(buffer, format="webp", quality=60)
     return web.Response(body=buffer.getvalue(), content_type="image/webp", headers={"Cache-Control": "max-age=86400"})
 
 
