@@ -21,8 +21,9 @@ overall_soundscape: Rain patters steadily against the window glass, the ceramic 
 non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
 // With a start image the guide describes only the motion and what <Picture 1> keeps, so this example
 // fits any picture. The main character speaks one short line, and both sound fields are filled so no
-// other speech is invented.
-const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently, turns slightly toward the camera with a soft smile, and with a gentle, warm voice (S1) says: <d>[English] Hi, it's nice to see you.</d>
+// other speech is invented. Later shots start with their cut time (MM:SS.mmm), which has to fall inside
+// the video, so the second shot cuts in at 2.5 s to fit lengths from 3 s up.
+const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently, turns slightly toward the camera with a soft smile, and with a gentle, warm voice (S1) says: <d>[English] Hi, it's nice to see you.</d> [Shot 2] At 00:02.500, the camera cuts to a close-up of the main character's face in the same setting and lighting as their smile widens and their eyes sparkle.
 
 overall_soundscape: Soft ambient sound that fits the setting, with faint fabric rustling as the character moves.
 
