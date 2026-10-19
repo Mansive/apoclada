@@ -130,7 +130,7 @@ routes.static("/studio/assets", WEB_ROOT)
 async def studio_models(request):
     models = []
     if all(have(f) for f in MOSS.values()):
-        models.append({"name": "MOSS-Image", "family": "moss", **MOSS})
+        models.append({"name": os.path.splitext(MOSS["unet"])[0], "family": "moss", **MOSS})
     if all(have(f) for f in KREA2.values()):
         models += [{"name": os.path.splitext(unet)[0], "family": "krea2", "unet": unet, **KREA2} for unet in krea2_models()]
     return web.json_response(models)
