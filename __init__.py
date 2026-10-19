@@ -83,6 +83,10 @@ PACKS = [
 routes = PromptServer.instance.routes
 
 
+def jxl_box(kind, payload):
+    return (len(payload) + 8).to_bytes(4, "big") + kind + payload
+
+
 # SaveImage's twin for JPEG XL. The workflow goes into Exif the way ComfyUI writes WebP ("prompt:"
 # in the Model tag, other extra_pnginfo keys counting down from Make) so Reuse settings can read it.
 class SaveImageJXL(SaveImage):
@@ -106,10 +110,17 @@ class SaveImageJXL(SaveImage):
         for batch_number, image in enumerate(images):
             img = Image.fromarray(np.clip(255. * image.cpu().numpy(), 0, 255).astype(np.uint8))
             file = f"{filename.replace('%batch_num%', str(batch_number))}_{counter:05}_.jxl"
-            # Quality 90 is libjxl's distance 1, its "visually lossless" target. Compressed metadata
-            # boxes would come back unreadable, so Exif is stored as is.
-            img.save(os.path.join(full_output_folder, file), "JXL", lossless=lossless, quality=90, effort=7,
-                     exif=exif.tobytes() if exif else None, use_container=True)
+            # Quality 90 is libjxl's distance 1, its "visually lossless" target.
+            buf = BytesIO()
+            img.save(buf, "JXL", lossless=lossless, quality=90, effort=7)
+            data = buf.getvalue()
+            # libjxl splits the codestream into jxlp boxes around metadata, which Safari can't decode,
+            # so the container is built here with Exif ahead of one jxlc box.
+            if exif:
+                data = b"".join(jxl_box(t, p) for t, p in ((b"JXL ", b"\r\n\x87\n"), (b"ftyp", b"jxl \0\0\0\0jxl "),
+                                                         (b"Exif", b"\0\0\0\0" + exif.tobytes()[6:]), (b"jxlc", data)))
+            with open(os.path.join(full_output_folder, file), "wb") as f:
+                f.write(data)
             results.append({"filename": file, "subfolder": subfolder, "type": self.type})
             counter += 1
         return {"ui": {"images": results}, "result": (images,)}
