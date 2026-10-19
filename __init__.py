@@ -5,12 +5,14 @@ the page itself, gallery listing, metadata and delete, model downloads and self-
 """
 import asyncio
 import json
+import math
 import mimetypes
 import os
 import socket
 import subprocess
 import sys
 import time
+from fractions import Fraction
 from io import BytesIO
 
 import aiohttp
@@ -21,6 +23,7 @@ from PIL import Image
 
 import folder_paths
 from comfy.cli_args import args
+from comfy_api.latest._input_impl.video_types import BT709_NCL, set_video_color_properties
 from comfyui_version import __version__ as COMFYUI_VERSION
 from nodes import SaveImage
 from server import PromptServer
@@ -146,12 +149,96 @@ class SaveImageJXL(SaveImage):
         return {"ui": {"images": results}, "result": (images,)}
 
 
-NODE_CLASS_MAPPINGS = {"ApocladaSaveImage": SaveImageEnhanced, **({"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {})}
-NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (with enhanced prompt)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)"}
+# H.265 encoders for videos: the graphics card's own (NVIDIA NVENC, AMD AMF) or x265 on the CPU.
+# The GPU ones run at constant quality near x265's CRF 20; x265's files come out smallest.
+HEVC_ENCODERS = {
+    "hevc_nvenc": ("NVIDIA GPU", {"preset": "p5", "tune": "hq", "rc": "vbr", "cq": "22", "b": "0"}),
+    "hevc_amf": ("AMD GPU", {"usage": "transcoding", "quality": "quality", "rc": "cqp", "qp_i": "20", "qp_p": "22"}),
+    "libx265": ("Software", {"crf": "20", "preset": "medium", "x265-params": "log-level=error"}),
+}
+hevc_available = None
+
+
+def hevc_encoder_opens(name, width, height):
+    try:
+        ctx = av.CodecContext.create(name, "w")
+        ctx.width, ctx.height, ctx.pix_fmt, ctx.time_base, ctx.framerate = width, height, "yuv420p", Fraction(1, 24), Fraction(24)
+        ctx.options = HEVC_ENCODERS[name][1]
+        ctx.open()
+        return True
+    except av.FFmpegError:
+        return False
+
+
+# FFmpeg builds list hevc_nvenc and hevc_amf whatever the graphics card, so each encoder is tried once
+# to see which ones this PC can actually run.
+def working_hevc_encoders():
+    global hevc_available
+    if hevc_available is None:
+        hevc_available = [name for name in HEVC_ENCODERS if hevc_encoder_opens(name, 1024, 576)]
+    return hevc_available
+
+
+# SaveVideo's twin for H.265 in MP4, tagged hvc1 so Safari plays it. Audio, metadata and color
+# tags are written the way SaveVideo writes them.
+class SaveVideoHEVC:
+    DESCRIPTION = "Saves the input video to your ComfyUI output directory as H.265 (MP4)."
+    RETURN_TYPES = ()
+    FUNCTION = "save_video"
+    OUTPUT_NODE = True
+    CATEGORY = "image/video"
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {"video": ("VIDEO",), "filename_prefix": ("STRING", {"default": "video/ComfyUI"}), "encoder": (list(HEVC_ENCODERS),)},
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+
+    def save_video(self, video, filename_prefix, encoder, prompt=None, extra_pnginfo=None):
+        c = video.get_components()
+        height, width = c.images.shape[1:3]
+        # AMD's encoder won't open below 384 px wide (Studio's smallest portrait videos), so those go
+        # to x265 instead.
+        if not hevc_encoder_opens(encoder, width, height):
+            encoder = "libx265"
+        full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(filename_prefix, folder_paths.get_output_directory(), width, height)
+        file = f"{filename}_{counter:05}_.mp4"
+        with av.open(os.path.join(full_output_folder, file), "w", format="mp4", options={"movflags": "use_metadata_tags+faststart"}) as out:
+            if not args.disable_metadata:
+                for key, value in {**(extra_pnginfo or {}), **({"prompt": prompt} if prompt is not None else {})}.items():
+                    out.metadata[key] = json.dumps(value)
+            frame_rate = Fraction(round(c.frame_rate * 1000), 1000)
+            stream = out.add_stream(encoder, rate=frame_rate)
+            stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
+            stream.options = HEVC_ENCODERS[encoder][1]
+            stream.codec_context.codec_tag = "hvc1"
+            set_video_color_properties(stream.codec_context, "sRGB")
+            if c.audio:
+                sample_rate = int(c.audio["sample_rate"])
+                waveform = c.audio["waveform"][0, :, :math.ceil(sample_rate / frame_rate * c.images.shape[0])]
+                layout = {1: "mono", 2: "stereo", 6: "5.1"}.get(waveform.shape[0], "stereo")
+                audio = out.add_stream("aac", rate=sample_rate, layout=layout)
+            for image in c.images:
+                frame = av.VideoFrame.from_ndarray((image * 255).clamp(0, 255).byte().cpu().numpy(), format="rgb24")
+                frame = frame.reformat(format="yuv420p", dst_colorspace=BT709_NCL)
+                set_video_color_properties(frame, "sRGB")
+                out.mux(stream.encode(frame))
+            out.mux(stream.encode(None))
+            if c.audio:
+                frame = av.AudioFrame.from_ndarray(waveform.float().cpu().contiguous().numpy(), format="fltp", layout=layout)
+                frame.sample_rate, frame.pts = sample_rate, 0
+                out.mux(audio.encode(frame))
+                out.mux(audio.encode(None))
+        return {"ui": {"images": [{"filename": file, "subfolder": subfolder, "type": "output"}], "animated": (True,)}}
+
+
+NODE_CLASS_MAPPINGS = {"ApocladaSaveImage": SaveImageEnhanced, "ApocladaSaveVideoHEVC": SaveVideoHEVC, **({"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {})}
+NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (with enhanced prompt)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)", "ApocladaSaveVideoHEVC": "Save Video (H.265)"}
 
 # Studio-wide choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
 PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
-PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True}
+PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True, "video_codec": "h264", "hevc_encoder": None}
 
 
 def load_prefs():
@@ -162,9 +249,18 @@ def load_prefs():
         return dict(PREF_DEFAULTS)
 
 
+# Besides the saved choices, the page gets what this PC can do. The H.265 encoder falls back to the
+# first one that works (the GPU's, if any) when none was picked or the picked one stopped working.
+async def prefs_response(prefs):
+    encoders = await asyncio.to_thread(working_hevc_encoders)
+    encoder = prefs["hevc_encoder"] if prefs["hevc_encoder"] in encoders else next(iter(encoders), None)
+    return web.json_response({**prefs, "hevc_encoder": encoder, "jxl_available": pillow_jxl is not None,
+                              "hevc_encoders": [{"id": e, "label": HEVC_ENCODERS[e][0]} for e in encoders]})
+
+
 @routes.get("/studio/prefs")
 async def studio_prefs(request):
-    return web.json_response({**load_prefs(), "jxl_available": pillow_jxl is not None})
+    return await prefs_response(load_prefs())
 
 
 @routes.post("/studio/prefs")
@@ -175,9 +271,13 @@ async def studio_prefs_save(request):
         prefs["image_format"] = data["image_format"]
     if isinstance(data.get("jxl_lossless"), bool):
         prefs["jxl_lossless"] = data["jxl_lossless"]
+    if data.get("video_codec") in ("h264", "hevc"):
+        prefs["video_codec"] = data["video_codec"]
+    if data.get("hevc_encoder") in HEVC_ENCODERS:
+        prefs["hevc_encoder"] = data["hevc_encoder"]
     with open(PREFS_FILE, "w", encoding="utf-8") as f:
         json.dump(prefs, f)
-    return web.json_response({**prefs, "jxl_available": pillow_jxl is not None})
+    return await prefs_response(prefs)
 
 
 def have(name):

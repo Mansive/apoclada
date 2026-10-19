@@ -150,7 +150,7 @@ let models = [];
 let turboLora = null;
 let videoFiles = null;
 // Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
-let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false };
+let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", hevc_encoder: null, hevc_encoders: [] };
 // Safari and Chrome 155+ show JPEG XL. Other browsers get .jxl images as PNG copies made by the PC.
 const JXL_PROBE = "data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==";
 let jxlShown = false;
@@ -575,8 +575,15 @@ function buildVideoWorkflow(s) {
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "22": { class_type: "VAEDecodeAudio", inputs: { samples: ["16", 0], vae: ["19", 0] } },
     "23": { class_type: "CreateVideo", inputs: { images: ["17", 0], audio: ["22", 0], fps: 24 } },
-    "18": { class_type: "SaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", format: "auto", codec: "auto" } },
+    "18": saveVideoNode(),
   };
+}
+
+// Setup's H.265 choice goes through Apoclada's save node; H.264 stays on ComfyUI's SaveVideo.
+function saveVideoNode() {
+  const inputs = { video: ["23", 0], filename_prefix: "studio/h3" };
+  if (prefs.video_codec === "hevc" && prefs.hevc_encoder) return { class_type: "ApocladaSaveVideoHEVC", inputs: { ...inputs, encoder: prefs.hevc_encoder } };
+  return { class_type: "SaveVideo", inputs: { ...inputs, format: "auto", codec: "auto" } };
 }
 
 async function generate() {
@@ -586,7 +593,7 @@ async function generate() {
   if (video && !videoFiles) { toast("The MiniMax H3 files are missing. Download them in Setup."); return; }
   if (settings.randomSeed) settings.seed = Math.floor(Math.random() * 2 ** 48);
   syncForm();
-  if (!video) prefs = await fetch("/studio/prefs").then((r) => r.json()).catch(() => prefs);
+  prefs = await fetch("/studio/prefs").then((r) => r.json()).catch(() => prefs);
   const res = await fetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1230,7 +1237,7 @@ async function loadPrefs(change) {
     return b;
   };
   const group = (...buttons) => {
-    const g = el("div", { className: "segmented two" }, ...buttons);
+    const g = el("div", { className: buttons.length === 3 ? "segmented" : "segmented two" }, ...buttons);
     g.setAttribute("role", "radiogroup");
     return g;
   };
@@ -1250,6 +1257,23 @@ async function loadPrefs(change) {
     jxl && el("span", { className: "note", textContent: "Safari and Chrome 155 or newer show JPEG XL; other browsers here see a PNG copy. Many apps outside the browser can't open .jxl files yet." }),
     el("span", { className: "note", textContent: "Applies to new images from every device. Existing images keep their format." }),
     !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC. Install Apoclada's requirements.txt into ComfyUI's Python, then restart ComfyUI." }),
+  ].filter(Boolean));
+  // The PC lists the H.265 encoders it can run: an NVIDIA or AMD graphics card's, and x265 on the CPU.
+  const hevc = p.video_codec === "hevc" && Boolean(p.hevc_encoder);
+  const gpu = p.hevc_encoder !== "libx265";
+  $("video-format").replaceChildren(...[
+    group(
+      radio("H.264", "Plays everywhere", !hevc, { video_codec: "h264" }),
+      radio("H.265", "Smaller files", hevc, { video_codec: "hevc" }, !p.hevc_encoders.length)),
+    hevc && p.hevc_encoders.length > 1 && group(...p.hevc_encoders.map((e) =>
+      radio(e.label, e.id === "libx265" ? "Smallest files" : "Fastest", e.id === p.hevc_encoder, { hevc_encoder: e.id }))),
+    el("span", { className: "note", textContent: !hevc
+      ? "H.264 plays in every app and browser."
+      : "Safari, and Chrome or Edge on most PCs, play H.265. Some older apps can't." }),
+    hevc && el("span", { className: "note", textContent: gpu
+      ? "The graphics card encodes the video. Very narrow videos use Software instead."
+      : `x265 encodes the video on the CPU, a few seconds slower than a graphics card.${p.hevc_encoders.length > 1 ? "" : " No NVIDIA or AMD video encoder was found."}` }),
+    el("span", { className: "note", textContent: "Applies to new videos from every device. Existing videos keep their format." }),
   ].filter(Boolean));
 }
 
