@@ -878,9 +878,7 @@ function showViewerImage() {
   $("v-save").href = imageUrl(item);
   $("v-save").download = item.filename;
   $("v-animate").hidden = video || !videoFiles;
-  $("v-hint").textContent = video
-    ? "Save puts the video in Files. Open it there and use Share › Save Video to add it to Photos."
-    : "Press and hold the image to save it to Photos";
+  $("v-hint").hidden = !video;
   $("v-pos").textContent = list.length > 1 ? `${viewer.index + 1} / ${list.length}` : "";
   $("v-prev").disabled = viewer.index === 0;
   $("v-next").disabled = viewer.index === list.length - 1;
