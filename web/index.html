@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=100">
+<link rel="stylesheet" href="/studio/assets/style.css?v=101">
 </head>
 <body>
 <header class="topbar">
@@ -97,11 +97,12 @@
 
       <div id="mode-field" class="field img-only" hidden>
         <span class="label">Mode</span>
-        <div id="mode" class="segmented two" role="radiogroup" aria-label="Mode">
+        <div id="mode" class="segmented" role="radiogroup" aria-label="Mode">
           <button type="button" role="radio" data-mode="full">Quality<small>50 steps</small></button>
           <button type="button" role="radio" data-mode="turbo">Turbo<small>8 steps</small></button>
+          <button type="button" role="radio" data-mode="rapid">Rapid<small>4 steps</small></button>
         </div>
-        <span class="note">Turbo uses the 8-step distilled LoRA. It has no CFG, so some options may be grayed out.</span>
+        <span class="note">Turbo and Rapid are distilled for 8 and 4 steps. They have no CFG, so some options may be grayed out.</span>
       </div>
 
       <div id="shape-field" class="field">
@@ -150,7 +151,7 @@
           <label class="switch"><input id="enhance" type="checkbox"><span>Enhance prompt</span></label>
           <span class="note">Rewrites your prompt using the model's official template. Read the result under Info. The text model is censored, so it doesn't work for NSFW prompts.</span>
         </div>
-        <div class="field">
+        <div id="shift-field" class="field">
           <span class="label">Sigma shift <output id="shift-out" class="value"></output></span>
           <input id="shift" type="range" min="1" max="10" step="0.5">
         </div>
@@ -159,11 +160,11 @@
           <div id="slg" class="segmented four" role="radiogroup" aria-label="Layer skip guidance"></div>
           <span class="note">22 is recommended. Off looks more photographic but small details can fall apart.</span>
         </div>
-        <label class="field">
+        <label id="sampler-field" class="field">
           <span class="label">Sampler</span>
           <select id="sampler"></select>
         </label>
-        <label class="field">
+        <label id="scheduler-field" class="field">
           <span class="label">Scheduler</span>
           <select id="scheduler"></select>
         </label>
@@ -259,6 +260,6 @@
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=100"></script>
+<script src="/studio/assets/app.js?v=101"></script>
 </body>
 </html>

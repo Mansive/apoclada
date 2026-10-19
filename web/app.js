@@ -108,6 +108,11 @@ const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
 const MODES = {
   full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
   turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
+  // darask0's rapid-moss adapter brings its own sampler and sigmas, so only the step count applies.
+  rapid: {
+    tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
+    sizeNote: "Trained at about 1 MP. Other sizes are untested.", cfgNote: "",
+  },
   krea2: {
     tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "", sampler: "euler", scheduler: "simple" }, steps: [4, 16], note: "8 to 12 is recommended.",
     sizeNote: "1 MP is the official default.",
@@ -148,6 +153,7 @@ settings.sampler ??= MODES[settings.mode].tuning.sampler;
 settings.scheduler ??= MODES[settings.mode].tuning.scheduler;
 let models = [];
 let turboLora = null;
+let rapidAdapter = null;
 let videoFiles = null;
 // Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
 let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] } };
@@ -286,14 +292,21 @@ function syncForm() {
   const { width, height } = dimensions(settings.aspect, settings.mp);
   $("size-out").textContent = `${settings.mp} MP · ${width} × ${height}`;
   const turbo = settings.mode === "turbo";
+  const rapid = settings.mode === "rapid";
   const krea2 = settings.mode === "krea2";
+  const distilled = turbo || rapid;
+  const unusedHere = `Not used in ${turbo ? "Turbo" : "Rapid"} mode`;
   const mode = MODES[settings.mode];
-  $("mode-field").hidden = !turboLora;
-  setUnused($("mode-field"), krea2, "Krea 2 models have no Turbo mode");
+  $("mode-field").hidden = !turboLora && !rapidAdapter;
+  setUnused($("mode-field"), krea2, "Krea 2 models have no Turbo or Rapid mode");
+  $("mode").querySelector("[data-mode=turbo]").hidden = !turboLora;
+  $("mode").querySelector("[data-mode=rapid]").hidden = !rapidAdapter;
+  $("mode").className = turboLora && rapidAdapter ? "segmented" : "segmented two";
   for (const b of $("mode").children) b.setAttribute("aria-checked", b.dataset.mode === settings.mode);
-  setUnused($("negative-field"), turbo || settings.cfg <= 1, turbo ? "Not used in Turbo mode" : "Not used at CFG 1");
-  setUnused($("cfg-field"), turbo, "Not used in Turbo mode");
-  setUnused($("slg-field"), turbo || krea2, turbo ? "Not used in Turbo mode" : "Not used with Krea 2 models");
+  setUnused($("negative-field"), distilled || settings.cfg <= 1, distilled ? unusedHere : "Not used at CFG 1");
+  setUnused($("cfg-field"), distilled, unusedHere);
+  setUnused($("slg-field"), distilled || krea2, distilled ? unusedHere : "Not used with Krea 2 models");
+  for (const id of ["shift-field", "sampler-field", "scheduler-field"]) setUnused($(id), rapid, unusedHere);
   [$("steps").min, $("steps").max] = mode.steps;
   $("steps-note").textContent = mode.note;
   $("size-note").textContent = mode.sizeNote;
@@ -308,11 +321,11 @@ function syncForm() {
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
       ]
     : [
-        turbo ? "Turbo" : "",
+        turbo ? "Turbo" : rapid ? "Rapid" : "",
         settings.enhance ? "enhanced prompt" : "",
         `${width}×${height}`,
         `${settings.steps} steps`,
-        turbo ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
+        distilled ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
         settings.batch > 1 ? `${settings.batch} images` : "",
       ]).filter(Boolean).join(" · ");
@@ -475,6 +488,7 @@ function buildWorkflow(s) {
   const model = models.find((m) => m.name === s.model);
   const { width, height } = dimensions(s.aspect, s.mp);
   if (model.family === "krea2") return buildKrea2Workflow(s, model, width, height);
+  if (s.mode === "rapid") return buildRapidWorkflow(s, model, width, height);
   const turbo = s.mode === "turbo";
   // ComfyUI's native MOSS model takes raw 0-1 timesteps: ModelSamplingSD3 would scale them by 1000
   // and produce pure noise, so the shift goes through the AuraFlow node instead.
@@ -499,6 +513,25 @@ function buildWorkflow(s) {
         model: ["13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
+    "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
+    "18": saveNode("studio/moss", s),
+  };
+}
+
+// Rapid mode, as in rapid-moss's native example: its node patches the model and hands
+// SamplerCustomAdvanced the adapter's own sampler and sigmas. No CFG, so BasicGuider and no negative prompt.
+function buildRapidWorkflow(s, model, width, height) {
+  return {
+    "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "moss_image", device: "default" } },
+    "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
+    "20": { class_type: "RapidMOSSAdapter", inputs: { model: ["1", 0], adapter: rapidAdapter, steps: s.steps, lora_strength: 1 } },
+    ...(s.enhance && enhanceNodes(s, { prompt: s.prompt, system_prompt: MOSS_ENHANCE, max_length: 4096, "sampling_mode.repetition_penalty": 1, mtp: "auto" })),
+    "4": { class_type: "CLIPTextEncode", inputs: { text: s.enhance ? ["30", 0] : s.prompt, clip: ["2", 0] } },
+    "6": { class_type: "EmptyFlux2LatentImage", inputs: { width, height, batch_size: s.batch } },
+    "21": { class_type: "BasicGuider", inputs: { model: ["20", 0], conditioning: ["4", 0] } },
+    "22": { class_type: "RandomNoise", inputs: { noise_seed: s.seed } },
+    "16": { class_type: "SamplerCustomAdvanced", inputs: { noise: ["22", 0], guider: ["21", 0], sampler: ["20", 1], sigmas: ["20", 2], latent_image: ["6", 0] } },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "18": saveNode("studio/moss", s),
   };
@@ -949,13 +982,24 @@ async function showInfo() {
   $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, value))));
 }
 
+// Rapid images sample with SamplerCustomAdvanced; this reads them back under KSampler's input names
+// (no CFG, sampler or scheduler: the adapter sets those).
+function samplerInputs(graph) {
+  const nodes = Object.values(graph);
+  const find = (type) => nodes.find((n) => n.class_type === type)?.inputs;
+  const rapid = find("RapidMOSSAdapter");
+  const sampler = find("SamplerCustomAdvanced");
+  if (!rapid || !sampler) return find("KSampler");
+  return { positive: graph[sampler.guider[0]].inputs.conditioning, steps: rapid.steps, seed: graph[sampler.noise[0]].inputs.noise_seed, latent_image: sampler.latent_image };
+}
+
 function infoRows(info) {
   const graph = info?.prompt;
   if (!graph) return [["Settings", "This file has no saved settings."]];
   const nodes = Object.values(graph);
   const find = (type) => nodes.find((n) => n.class_type === type)?.inputs;
   const linked = (link) => (Array.isArray(link) ? graph[link[0]] : null);
-  const turbo = find("LoraLoaderModelOnly") ? " · Turbo" : "";
+  const turbo = find("LoraLoaderModelOnly") ? " · Turbo" : find("RapidMOSSAdapter") ? " · Rapid" : "";
   const size = `${info.width} × ${info.height}`;
   const h3 = find("MiniMaxH3ImageToVideo");
   if (h3) {
@@ -969,7 +1013,7 @@ function infoRows(info) {
       ["Seed", find("RandomNoise")?.noise_seed],
     ];
   }
-  const s = find("KSampler");
+  const s = samplerInputs(graph);
   if (!s) return [["Settings", "This file has no saved settings."]];
   const text = linked(s.positive)?.inputs.text;
   const rewriter = linked(text);
@@ -986,7 +1030,7 @@ function infoRows(info) {
     ["Seed", s.seed],
     ["Sigma shift", (find("ModelSamplingAuraFlow") ?? find("ModelSamplingSD3"))?.shift],
     ["Layer skip guidance", slg === undefined ? null : String(slg).trim() || "Off"],
-    ["Sampler", `${s.sampler_name} · ${s.scheduler}`],
+    ["Sampler", s.sampler_name && `${s.sampler_name} · ${s.scheduler}`],
   ];
 }
 
@@ -1015,10 +1059,9 @@ async function reuseCurrent() {
   const graph = info?.prompt;
   const h3 = graph && Object.values(graph).find((n) => n.class_type === "MiniMaxH3ImageToVideo");
   if (h3) { reuseVideo(graph, h3.inputs); return; }
-  const sampler = graph && Object.values(graph).find((n) => n.class_type === "KSampler");
-  if (!sampler) { toast("This image has no saved settings"); return; }
+  const s = graph && samplerInputs(graph);
+  if (!s) { toast("This image has no saved settings"); return; }
   const node = (link) => (Array.isArray(link) ? graph[link[0]] : null);
-  const s = sampler.inputs;
   // With Enhance prompt on, the positive prompt comes from TextGenerate, whose input holds the typed
   // prompt (after the Krea 2 instructions).
   const text = node(s.positive)?.inputs.text;
@@ -1027,9 +1070,10 @@ async function reuseCurrent() {
   settings.prompt = (settings.enhance ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text) ?? settings.prompt;
   settings.negative = node(s.negative)?.inputs.text ?? "";
   settings.steps = s.steps;
-  settings.cfg = s.cfg;
-  settings.sampler = s.sampler_name;
-  settings.scheduler = s.scheduler;
+  // Rapid images have no CFG, sampler or scheduler; the current ones stay.
+  settings.cfg = s.cfg ?? settings.cfg;
+  settings.sampler = s.sampler_name ?? settings.sampler;
+  settings.scheduler = s.scheduler ?? settings.scheduler;
   settings.seed = s.seed;
   settings.randomSeed = false;
   const latent = node(s.latent_image)?.inputs;
@@ -1042,7 +1086,9 @@ async function reuseCurrent() {
   }
   const turbo = Object.values(graph).some((n) => n.class_type === "LoraLoaderModelOnly");
   if (turbo && !turboLora) { toast("This image used Turbo mode, but its LoRA is missing on the PC"); return; }
-  settings.mode = turbo ? "turbo" : "full";
+  const rapid = Object.values(graph).some((n) => n.class_type === "RapidMOSSAdapter");
+  if (rapid && !rapidAdapter) { toast("This image used Rapid mode, which needs the rapid-moss node and adapter on the PC"); return; }
+  settings.mode = rapid ? "rapid" : turbo ? "turbo" : "full";
   settings.slgLayer = "";
   for (const n of Object.values(graph)) {
     if (n.class_type === "ModelSamplingSD3" || n.class_type === "ModelSamplingAuraFlow") settings.shift = n.inputs.shift;
@@ -1361,9 +1407,9 @@ async function init() {
 
 async function loadModels() {
   let ksampler;
-  [models, { lora: turboLora }, videoFiles, ksampler] = await Promise.all([
+  [models, { lora: turboLora, rapid: rapidAdapter }, videoFiles, ksampler] = await Promise.all([
     fetch("/studio/models").then((r) => r.json()).catch(() => []),
-    fetch("/studio/turbo").then((r) => r.json()).catch(() => ({ lora: null })),
+    fetch("/studio/turbo").then((r) => r.json()).catch(() => ({ lora: null, rapid: null })),
     fetch("/studio/video").then((r) => r.json()).catch(() => null),
     fetch("/object_info/KSampler").then((r) => r.json()).catch(() => null),
   ]);
@@ -1371,7 +1417,7 @@ async function loadModels() {
   const { sampler_name, scheduler } = ksampler?.KSampler.input.required ?? {};
   $("sampler").replaceChildren(...(sampler_name?.[0] ?? [settings.sampler]).map((n) => new Option(n, n)));
   $("scheduler").replaceChildren(...(scheduler?.[0] ?? [settings.scheduler]).map((n) => new Option(n, n)));
-  if (!turboLora && settings.mode === "turbo") setMode("full");
+  if ((!turboLora && settings.mode === "turbo") || (!rapidAdapter && settings.mode === "rapid")) setMode("full");
   if (!videoFiles) settings.kind = "image";
   else if (!models.length) settings.kind = "video";
   renderModels();

@@ -25,7 +25,7 @@ import folder_paths
 from comfy.cli_args import args
 from comfy_api.latest._input_impl.video_types import BT709_NCL, set_video_color_properties
 from comfyui_version import __version__ as COMFYUI_VERSION
-from nodes import SaveImage
+from nodes import NODE_CLASS_MAPPINGS as NODE_CLASSES, SaveImage
 from server import PromptServer
 
 # JPEG XL needs pillow-jxl-plugin (requirements.txt). Importing it teaches Pillow, and with it the
@@ -46,6 +46,10 @@ VIDEO_EXTS = {".mp4", ".webm", ".mov"}
 COMFYUI_MIN = "0.41.0"
 
 HF = "https://huggingface.co"
+# The rapid-moss node reads adapters from models/rapid_moss/<name>/. It registers that folder too, but
+# Setup has to download into it whether or not the node is installed yet.
+RAPID_ADAPTER = "rapid-moss-4step"
+folder_paths.add_model_folder_path("rapid_moss", os.path.join(folder_paths.models_dir, "rapid_moss"))
 # Every file Apoclada can download: name -> (models folder, source, size in bytes).
 FILES = {
     "moss_image_sft_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors", 5413698958),
@@ -53,6 +57,9 @@ FILES = {
     "flux2-vae.safetensors": ("vae", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors", 336211292),
     # lodestones/MOSS-Image-SFT-8-steps-dmd: 8-step, CFG-free distillation LoRA for MOSS-Image-SFT.
     "moss-image-sft-8step-dmd.safetensors": ("loras", f"{HF}/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors", 1189176800),
+    # darask0/MOSS-Image_4-step_adapter_lora (rapid-moss): 4-step adapter, run by its own custom node.
+    **{f"{RAPID_ADAPTER}/{name}": ("rapid_moss", f"{HF}/darask0/MOSS-Image_4-step_adapter_lora/resolve/main/{name}", size)
+       for name, size in (("lora.safetensors", 1189176832), ("time_embedding.safetensors", 41017896), ("dataspace.safetensors", 65784))},
     "qwen3vl_4b_int8_convrot.safetensors": ("text_encoders", f"{HF}/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors", 4858559240),
     "qwen_image_vae.safetensors": ("vae", f"{HF}/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors", 253806246),
     "minimax_h3_fl2va_pruned_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", 20970379616),
@@ -63,6 +70,7 @@ FILES = {
 }
 MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "flux2-vae.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
+RAPID_FILES = [name for name in FILES if name.startswith(f"{RAPID_ADAPTER}/")]
 # Krea 2 and its fine-tunes (e.g. lodestones' Kroma) run on ComfyUI's native nodes with the
 # text encoder and VAE from Comfy-Org/Krea-2.
 KREA2 = {"clip": "qwen3vl_4b_int8_convrot.safetensors", "vae": "qwen_image_vae.safetensors"}
@@ -77,7 +85,8 @@ H3 = {
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
 PACKS = [
-    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality and Turbo modes.", "files": [*MOSS.values(), TURBO_LORA]},
+    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality, Turbo and Rapid modes. Rapid also needs the rapid-moss custom node.",
+     "files": [*MOSS.values(), TURBO_LORA, *RAPID_FILES]},
     {"id": "krea2", "name": "Kroma", "about": "Images from lodestones' Krea 2 fine-tune, in 8 steps.", "files": list(KREA2.values()),
      "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
     {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt or a start image.", "files": list(H3.values())},
@@ -295,7 +304,7 @@ async def studio_prefs_save(request):
 
 
 def have(name):
-    return name in folder_paths.get_filename_list(FILES[name][0])
+    return os.path.normpath(name) in folder_paths.get_filename_list(FILES[name][0])
 
 
 def krea2_models():
@@ -359,9 +368,11 @@ async def studio_models(request):
     return web.json_response(models)
 
 
+# Rapid mode needs the rapid-moss custom node as well as its adapter files.
 @routes.get("/studio/turbo")
 async def studio_turbo(request):
-    return web.json_response({"lora": TURBO_LORA if have(TURBO_LORA) else None})
+    rapid = "RapidMOSSAdapter" in NODE_CLASSES and all(have(f) for f in RAPID_FILES)
+    return web.json_response({"lora": TURBO_LORA if have(TURBO_LORA) else None, "rapid": RAPID_ADAPTER if rapid else None})
 
 
 # Video mode is offered only when every H3 file is present; the turbo LoRA is optional.
@@ -404,6 +415,7 @@ async def download_pack(pack):
         for name in names:
             _, url, size = FILES[name]
             path = model_path(name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             part = path + ".part"
             start = os.path.getsize(part) if os.path.exists(part) else 0
             download.update(file=name, done=finished + start)
