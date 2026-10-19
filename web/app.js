@@ -23,13 +23,13 @@ overall_soundscape: Rain patters steadily against the window glass, the ceramic 
 
 non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
 // With a start image the guide describes only the motion and what <Picture 1> keeps, so this example
-// fits any picture. The main character speaks one short line, and both sound fields are filled so no
-// other speech is invented.
-const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character blinks, breathes gently, turns slightly toward the camera with a soft smile, and with a gentle, warm voice (S1) says: <d>[Japanese] こんにちは、会えて嬉しいな。</d> [Shot 2] At 00:01.500, the camera cuts to a close-up of the main character's face in the same setting and lighting as their smile widens and their eyes sparkle.
+// swaps the scene description for that and the subject for "the main character"; the shots, timing,
+// voice, line and music stay the same as VIDEO_PROMPT.
+const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene shown in <Picture 1> comes to life, keeping its art style, characters, clothing, lighting and composition. The camera pushes in with small amplitude at slow speed as the main character breathes gently and smiles. [Shot 2] At 00:01.500, the camera cuts to a close-up of the main character's face in the same setting and lighting as they smile, and with a soft, bright voice (S1) says: <d>[Japanese] 美味しい</d>
 
 overall_soundscape: Soft ambient sound that fits the setting, with faint fabric rustling as the character moves.
 
-non_diegetic_music: N/A`;
+non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
 const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
