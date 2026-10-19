@@ -945,13 +945,13 @@ async function showInfo() {
   $("v-info-list").replaceChildren(el("dd", { className: "note", textContent: "Loading…" }));
   const info = await imageInfo(img);
   if (viewer.list[viewer.index] !== img) return;
-  const rows = infoRows(info, img).filter(([, value]) => value !== null && value !== undefined && value !== "");
+  const rows = [...infoRows(info), ...encodingRows(info), ["File", img.filename]].filter(([, value]) => value !== null && value !== undefined && value !== "");
   $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, value))));
 }
 
-function infoRows(info, img) {
+function infoRows(info) {
   const graph = info?.prompt;
-  if (!graph) return [["Settings", "This file has no saved settings."], ["File", img.filename]];
+  if (!graph) return [["Settings", "This file has no saved settings."]];
   const nodes = Object.values(graph);
   const find = (type) => nodes.find((n) => n.class_type === type)?.inputs;
   const linked = (link) => (Array.isArray(link) ? graph[link[0]] : null);
@@ -967,11 +967,10 @@ function infoRows(info, img) {
       ["Length", `${Math.round(h3.length / 24)} s`],
       ["Steps", find("BasicScheduler")?.steps],
       ["Seed", find("RandomNoise")?.noise_seed],
-      ["File", img.filename],
     ];
   }
   const s = find("KSampler");
-  if (!s) return [["Settings", "This file has no saved settings."], ["File", img.filename]];
+  if (!s) return [["Settings", "This file has no saved settings."]];
   const text = linked(s.positive)?.inputs.text;
   const rewriter = linked(text);
   const unet = find("UNETLoader")?.unet_name.replace(/\.safetensors$/, "") ?? (find("MOSSImageHFLoader") && "MOSS-Image");
@@ -988,7 +987,25 @@ function infoRows(info, img) {
     ["Sigma shift", (find("ModelSamplingAuraFlow") ?? find("ModelSamplingSD3"))?.shift],
     ["Layer skip guidance", slg === undefined ? null : String(slg).trim() || "Off"],
     ["Sampler", `${s.sampler_name} · ${s.scheduler}`],
-    ["File", img.filename],
+  ];
+}
+
+const FORMATS = { PNG: "PNG", JXL: "JPEG XL", JPEG: "JPEG", WEBP: "WebP", h264: "H.264", hevc: "H.265", av1: "AV1", vp9: "VP9", aac: "AAC", opus: "Opus" };
+const ENCODERS = { h264_nvenc: "NVIDIA GPU", hevc_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", hevc_amf: "AMD GPU", libx264: "Software (x264)", libx265: "Software (x265)" };
+
+// What the file itself is: its format, the encoder that made it, and its size.
+function encodingRows(info) {
+  const e = info?.encoding;
+  if (!e) return [];
+  const nodes = Object.values(info.prompt ?? {});
+  const jxl = nodes.find((n) => n.class_type === "ApocladaSaveImageJXL")?.inputs;
+  // Videos saved before the encoder was recorded came from ComfyUI's SaveVideo, which uses x264 for H.264.
+  const encoder = e.encoder ?? (e.format === "h264" && nodes.some((n) => n.class_type === "SaveVideo") ? "libx264" : null);
+  const a = e.audio;
+  return [
+    ["Encoding", [FORMATS[e.format] ?? e.format, jxl && (jxl.lossless ? "Lossless" : "Lossy"), ENCODERS[encoder] ?? encoder].filter(Boolean).join(" · ")],
+    ["Audio", a && [FORMATS[a.format] ?? a.format, `${a.sample_rate / 1000} kHz`, { 1: "Mono", 2: "Stereo" }[a.channels] ?? `${a.channels} channels`].join(" · ")],
+    ["File size", info.bytes >= 1e6 ? `${(info.bytes / 1e6).toFixed(1)} MB` : `${Math.round(info.bytes / 1e3)} KB`],
   ];
 }
 

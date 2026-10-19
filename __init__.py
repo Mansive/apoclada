@@ -218,6 +218,8 @@ class SaveVideoMP4:
             if not args.disable_metadata:
                 for key, value in {**(extra_pnginfo or {}), **({"prompt": prompt} if prompt is not None else {})}.items():
                     out.metadata[key] = json.dumps(value)
+            # Info shows the encoder that actually ran, which can differ from the one asked for.
+            out.metadata["video_encoder"] = name
             frame_rate = Fraction(round(c.frame_rate * 1000), 1000)
             stream = out.add_stream(name, rate=frame_rate)
             stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
@@ -559,19 +561,23 @@ async def studio_image_info(request):
             prompt = container.metadata.get("prompt")
             stream = container.streams.video[0]
             width, height = stream.width, stream.height
+            audio = container.streams.audio[0].codec_context if container.streams.audio else None
+            encoding = {"format": stream.codec_context.name, "encoder": container.metadata.get("video_encoder"),
+                        "audio": audio and {"format": audio.name, "sample_rate": audio.sample_rate, "channels": audio.layout.nb_channels}}
         enhanced = None
     else:
         with Image.open(path) as img:
             prompt = img.info.get("prompt")
             enhanced = img.info.get("enhanced_prompt")
             width, height = img.size
+            encoding = {"format": img.format}
             if prompt is None:
                 # JPEG XL keeps them in Exif: the workflow in Model, extra_pnginfo counting down from Make.
                 exif = img.getexif()
                 tags = {v.split(":", 1)[0]: v.split(":", 1)[1] for t in range(0x0110, 0, -1) if isinstance(v := exif.get(t), str) and ":" in v}
                 prompt, enhanced = tags.get("prompt"), tags.get("enhanced_prompt")
     return web.json_response({"prompt": json.loads(prompt) if prompt else None, "enhanced_prompt": json.loads(enhanced) if enhanced else None,
-                              "width": width, "height": height})
+                              "width": width, "height": height, "encoding": encoding, "bytes": os.path.getsize(path)})
 
 
 # "Show in folder" opens Explorer on the PC, so it's only offered to a browser on the PC itself,
