@@ -540,8 +540,10 @@ function pngUrl(img) {
   return `/studio/images/png?${new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "", v: img.version ?? img.mtime ?? "" })}`;
 }
 
-function displayUrl(img) {
-  return isJxl(img) && !jxlShown ? pngUrl(img) : imageUrl(img);
+// Shows an output image, switching to the PNG copy if the browser can't decode a .jxl file.
+function showImage(el, img) {
+  el.onerror = isJxl(img) ? () => { el.onerror = null; el.src = pngUrl(img); } : null;
+  el.src = isJxl(img) && !jxlShown ? pngUrl(img) : imageUrl(img);
 }
 
 function imageKey(img) {
@@ -588,7 +590,7 @@ function showResults(images, version) {
     } else {
       el = document.createElement("img");
       el.alt = settings.prompt;
-      el.src = displayUrl(img);
+      showImage(el, img);
     }
     el.onclick = () => openViewer(list, list.indexOf(img));
     el.dataset.key = imageKey(img);
@@ -761,7 +763,7 @@ function showViewerImage() {
     $("v-video").src = imageUrl(item);
   } else {
     unloadVideo($("v-video"));
-    $("v-img").src = displayUrl(item);
+    showImage($("v-img"), item);
   }
   $("v-save").hidden = !video;
   $("v-save").href = imageUrl(item);
