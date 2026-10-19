@@ -1263,7 +1263,7 @@ async function loadPrefs(change) {
   const gpu = p.hevc_encoder !== "libx265";
   $("video-format").replaceChildren(...[
     group(
-      radio("H.264", "Plays everywhere", !hevc, { video_codec: "h264" }),
+      radio("H.264", "Works everywhere", !hevc, { video_codec: "h264" }),
       radio("H.265", "Smaller files", hevc, { video_codec: "hevc" }, !p.hevc_encoders.length)),
     hevc && p.hevc_encoders.length > 1 && group(...p.hevc_encoders.map((e) =>
       radio(e.label, e.id === "libx265" ? "Smallest files" : "Fastest", e.id === p.hevc_encoder, { hevc_encoder: e.id }))),
