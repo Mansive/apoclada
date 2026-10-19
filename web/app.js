@@ -42,8 +42,8 @@ const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked wi
 // 0.98 MP is H3's native canvas (1344×768 at 16:9); Comfy's guide warns 1 MP rounds above it.
 const VIDEO_MP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.98];
 const PROMPT_HINTS = {
-  image: "Describe the image. Put any text you want written in the picture inside quotes, e.g. a café sign that says \"Open late\"",
-  video: "Use MiniMax's three fields: integrated_multimodal_description: [Shot 1] the scene, action and camera, with speech as (S1) says: <d>[English] Hello.</d>, then overall_soundscape: ambient sound, then non_diegetic_music: background music or N/A. Tap Default prompts for an example.",
+  image: "Describe the image. Tap \"Default prompts\" for an example tailored to the selected model.",
+  video: "Describe the video and its sound. Tap \"Default prompts\" for an example in MiniMax's format.",
 };
 // Per-mode sampler settings. Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without
 // CFG, so layer skip guidance (which acts on the uncond pass) is off. Shift 5 tested best.
