@@ -26,7 +26,7 @@ const PROMPT_HINTS = {
   image: "Describe the image. Put any text you want written in the picture inside quotes, e.g. a café sign that says \"Open late\"",
   video: "Describe the scene, how things move and what you hear, e.g. a fox trots through snow at sunset, the camera tracks alongside, wind and crunching snow",
 };
-// Per-mode sampler settings. Fast is lodestones' 8-step DMD LoRA: distilled for 8 steps without
+// Per-mode sampler settings. Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without
 // CFG, so layer skip guidance (which acts on the uncond pass) is off. Shift 5 tested best.
 // krea2 is used whenever a Krea 2 model is picked: lodestones recommend 8 to 12 steps, CFG 1 to 1.5
 // and Krea 2's own shift of 1.15 for Kroma, and Comfy's Krea 2 Turbo template uses 8 steps at CFG 1.
@@ -197,11 +197,11 @@ function syncForm() {
   const krea2 = settings.mode === "krea2";
   const mode = MODES[settings.mode];
   $("mode-field").hidden = !fastLora;
-  setUnused($("mode-field"), krea2, "Krea 2 models have no Fast mode");
+  setUnused($("mode-field"), krea2, "Krea 2 models have no Turbo mode");
   for (const b of $("mode").children) b.setAttribute("aria-checked", b.dataset.mode === settings.mode);
-  setUnused($("negative-field"), fast || settings.cfg <= 1, fast ? "Not used in Fast mode" : "Not used at CFG 1");
-  setUnused($("cfg-field"), fast, "Not used in Fast mode");
-  setUnused($("slg-field"), fast || krea2, fast ? "Not used in Fast mode" : "Not used with Krea 2 models");
+  setUnused($("negative-field"), fast || settings.cfg <= 1, fast ? "Not used in Turbo mode" : "Not used at CFG 1");
+  setUnused($("cfg-field"), fast, "Not used in Turbo mode");
+  setUnused($("slg-field"), fast || krea2, fast ? "Not used in Turbo mode" : "Not used with Krea 2 models");
   [$("steps").min, $("steps").max] = mode.steps;
   $("steps-note").textContent = mode.note;
   $("size-note").textContent = mode.sizeNote;
@@ -216,7 +216,7 @@ function syncForm() {
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
       ]
     : [
-        fast ? "Fast" : "",
+        fast ? "Turbo" : "",
         `${width}×${height}`,
         `${settings.steps} steps`,
         fast ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
@@ -809,7 +809,7 @@ async function reuseCurrent() {
     settings.batch = latent.batch_size || 1;
   }
   const fast = Object.values(graph).some((n) => n.class_type === "LoraLoaderModelOnly");
-  if (fast && !fastLora) { toast("This image used Fast mode, but its LoRA is missing on the PC"); return; }
+  if (fast && !fastLora) { toast("This image used Turbo mode, but its LoRA is missing on the PC"); return; }
   settings.mode = fast ? "fast" : "full";
   settings.slgLayer = "";
   for (const n of Object.values(graph)) {

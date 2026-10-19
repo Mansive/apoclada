@@ -62,7 +62,7 @@ H3 = {
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
 PACKS = [
-    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality and Fast modes.", "files": [*MOSS.values(), FAST_LORA]},
+    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality and Turbo modes.", "files": [*MOSS.values(), FAST_LORA]},
     {"id": "krea2", "name": "Kroma", "about": "Images from lodestones' Krea 2 fine-tune, in 8 steps.", "files": list(KREA2.values()),
      "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
     {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt or a start image.", "files": list(H3.values())},
