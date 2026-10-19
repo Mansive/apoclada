@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=75">
+<link rel="stylesheet" href="/studio/assets/style.css?v=76">
 </head>
 <body>
 <header class="topbar">
@@ -45,6 +45,11 @@
         <summary class="label">Negative prompt <span class="hint">optional</span></summary>
         <textarea id="negative" rows="2" placeholder="Things to avoid, e.g. blurry, watermark"></textarea>
       </details>
+
+      <div class="field img-only">
+        <label class="switch"><input id="enhance" type="checkbox"><span>Enhance prompt</span></label>
+        <span class="note">The text model first rewrites your prompt into a detailed one, using the instructions from ComfyUI's official template for the selected model. The rewrite appears above the image.</span>
+      </div>
 
       <button type="button" id="reset-prompts" class="ghost wide">Default prompts</button>
 
@@ -226,6 +231,6 @@
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=75"></script>
+<script src="/studio/assets/app.js?v=76"></script>
 </body>
 </html>

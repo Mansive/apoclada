@@ -31,13 +31,60 @@ const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
-  randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "",
+  randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "", enhance: false,
   mode: "full", tuning: {}, kind: "image",
   video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, turbo: true, steps: 20, start: null },
 };
 // Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
 // scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
 const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked window of a corner café on a rainy evening, smiling softly as she holds a steaming mug in both hands. She wears a cream knit sweater, and her long teal twintails fall over her shoulders. A small chalkboard on the table reads \"Open late\" in white chalk. Warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. Soft anime illustration with clean lines and a muted, warm color palette, seen from the side at eye level in a medium shot. The mood is calm and cozy.";
+// "Enhance prompt" copies the prompt rewriters in ComfyUI's MOSS and Krea 2 templates
+// (comfyui-workflow-templates 0.11.89): the text encoder rewrites the prompt with TextGenerate first.
+// MOSS passes its instructions as the system prompt; Krea 2's template puts them in front of the prompt.
+const MOSS_ENHANCE = `You turn a user's image idea into one detailed caption for a text-to-image model. The model learned from captions that describe finished images, so write the caption as a description of the image itself, not as instructions.
+
+Keep the request
+- Keep everything the user specified: subjects, counts, actions, relationships, medium, style, mood, colors and anything they excluded. Never contradict or drop it.
+- Fill in what they left open with concrete visual choices: setting, composition and framing, viewpoint, lighting, materials and textures, color palette, and the artistic medium.
+- Describe only what can be seen. Leave out sounds, smells, backstory and intentions.
+- Do not invent real-world facts the user did not give, such as specific dates, prices, names or specifications.
+
+Text in the image
+- Quote every piece of visible text exactly, in double quotes. Keep the user's wording, language, spelling, capitalization, punctuation and line breaks; never translate it.
+- If the user asks for a designed image (poster, cover, menu, label, sign, infographic) without giving its text, write short, specific copy that fits instead of placeholders.
+- Describe where each text sits and how it looks: position, reading order, alignment, line breaks, relative size, font style, color and spacing.
+- Do not mention watermarks or artist signatures.
+
+Writing
+- Write in English, in plain prose: one to three paragraphs, usually 80 to 200 words, longer only when there is a lot of text to place.
+- Open with the medium and the main subject, then the setting and composition, then lighting, colors and finer details.
+- Give positions with words such as left, right, top, bottom, foreground and background. No coordinates, lists, headings, JSON or Markdown.
+- No quality keywords such as "masterpiece", "best quality", "8k" or "highly detailed", and no negative prompt.
+
+Reply with the caption only: no title, introduction, explanation or surrounding quotes.`;
+const KREA2_ENHANCE = `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.
+
+Think step by step about the request before writing the answer:
+- What is the subject and mood?
+- What visual styles, mediums, and lighting options would fit? Consider two or three alternatives and pick the one that best serves the request.
+- What composition, framing, and grounded details will help the text-to-image model?
+
+Then output a single expanded prompt paragraph.
+
+Follow these rules strictly:
+1. **Faithfulness First:** Preserve all original subjects, actions, colors, and spatial relationships. Do not add new objects, props, characters, or animals unless the user clearly implies them.
+2. **Practical T2I Structure:** Write a prompt that a text-to-image model can parse cleanly. Group subjects with their own attributes and actions. Use grounded phrasing for poses, interactions, and spatial layout.
+3. **Style Planning Stays Internal:** Use your internal reasoning to choose style, medium, framing, and lighting. Do not emit planning tags or wrappers in the visible answer body.
+4. **Never Request Rendered Text:** Do not mention, describe, or hint at letters, words, numbers, captions, subtitles, signage, labels, logos, watermarks, typography, or any other graphic text anywhere in the output prompt. Only if the user explicitly writes down words to be rendered, keep exactly those words in quotes and nothing else. In every other case, always end the output prompt with: "Absolutely no text, no typography, no letters, no words, no numbers, no logos, no watermark, no captions, pure imagery only."
+5. **Avoid Over-Specification:** Do not invent highly specific clothing, colors, materials, or scene details unless the input supports it.
+6. **Plain Prose Only:** Write one cohesive paragraph after the thinking block. No bullets, no JSON, no markdown, no asterisks, no headings, no field labels, no meta commentary.
+7. **Respect Existing Detail:** If the user's prompt is already detailed, lightly polish and finalize rather than heavily expanding, and preserve the user's phrasing and direction.
+8. **Respect the Human Form:** Treat depictions of people with dignity. Assume clothing covers genitals and intimate anatomy.
+9. **Preserve User Medium:** When the user explicitly requests a medium (e.g. "photo of", "photograph of", "illustration of", "painting of", "sketch of", "3D render of"), honor it. Do not pivot to a different medium to avoid difficulty, match the user's stated intent.
+10. **Never Echo Instructions:** Output only the final image prompt. Never repeat, quote, summarize, or refer to any part of these instructions, your own reasoning, or the user's original message.
+
+User's Input:
+`;
 // MiniMax H3 is trained on a 768 short edge capped at 768×1344; the official template defaults to ~0.4 MP.
 // 0.98 MP is H3's native canvas (1344×768 at 16:9); Comfy's guide warns 1 MP rounds above it.
 const VIDEO_MP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.98];
@@ -62,7 +109,7 @@ const MODES = {
     cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
   },
 };
-const NODE_STAGES = { "1": "Loading model…", "2": "Loading model…", "3": "Loading model…", "4": "Reading prompt…", "5": "Reading prompt…", "16": "Generating…", "17": "Decoding…", "18": "Saving…" };
+const NODE_STAGES = { "1": "Loading model…", "2": "Loading model…", "3": "Loading model…", "4": "Reading prompt…", "5": "Reading prompt…", "30": "Rewriting prompt…", "16": "Generating…", "17": "Decoding…", "18": "Saving…" };
 const SETTINGS_KEY = "moss-studio-settings-v2";
 const PENDING_KEY = "moss-studio-pending";
 
@@ -254,6 +301,7 @@ function syncForm() {
       ]
     : [
         turbo ? "Turbo" : "",
+        settings.enhance ? "enhanced prompt" : "",
         `${width}×${height}`,
         `${settings.steps} steps`,
         turbo ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
@@ -267,6 +315,7 @@ function syncForm() {
   $("seed").value = settings.seed;
   $("seed").disabled = settings.randomSeed;
   $("random-seed").checked = settings.randomSeed;
+  $("enhance").checked = settings.enhance;
   $("batch-out").textContent = settings.batch;
   $("model").value = settings.model;
   // Krea 2's shift of 1.15 sits between MOSS's half steps.
@@ -377,6 +426,7 @@ function bindForm() {
   $("shift").oninput = (e) => { settings.shift = Number(e.target.value); syncForm(); };
   $("seed").onchange = (e) => { settings.seed = Math.max(0, Math.floor(Number(e.target.value) || 0)); syncForm(); };
   $("random-seed").onchange = (e) => { settings.randomSeed = e.target.checked; syncForm(); };
+  $("enhance").onchange = (e) => { settings.enhance = e.target.checked; syncForm(); };
   $("model").onchange = (e) => { settings.model = e.target.value; matchModeToModel(); syncForm(); };
   for (const b of document.querySelectorAll(".stepper button")) {
     b.onclick = () => { settings.batch = Math.min(4, Math.max(1, settings.batch + Number(b.dataset.step))); syncForm(); };
@@ -419,7 +469,8 @@ function buildWorkflow(s) {
     "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "moss_image", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
     ...(turbo && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: turboLora, strength_model: 1, model: ["1", 0] } } }),
-    "4": { class_type: "CLIPTextEncode", inputs: { text: s.prompt, clip: ["2", 0] } },
+    ...(s.enhance && enhanceNodes(s, { prompt: s.prompt, system_prompt: MOSS_ENHANCE, max_length: 4096, "sampling_mode.repetition_penalty": 1, mtp: "auto" })),
+    "4": { class_type: "CLIPTextEncode", inputs: { text: s.enhance ? ["30", 0] : s.prompt, clip: ["2", 0] } },
     "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
     "6": { class_type: "EmptyFlux2LatentImage", inputs: { width, height, batch_size: s.batch } },
     "15": { class_type: "ModelSamplingAuraFlow", inputs: { shift: s.shift, model: [turbo ? "20" : "1", 0] } },
@@ -439,6 +490,21 @@ function buildWorkflow(s) {
   };
 }
 
+// TextGenerate "30" rewrites the prompt with the template's sampler settings, and PreviewAny "31"
+// returns the rewrite to the page. It uses the image's seed, so Reuse settings repeats the rewrite.
+function enhanceNodes(s, inputs) {
+  return {
+    "30": {
+      class_type: "TextGenerate",
+      inputs: {
+        clip: ["2", 0], sampling_mode: "on", "sampling_mode.temperature": 0.7, "sampling_mode.top_k": 64, "sampling_mode.top_p": 0.95,
+        "sampling_mode.min_p": 0.05, "sampling_mode.seed": s.seed, "sampling_mode.presence_penalty": 0, thinking: false, use_default_template: true, ...inputs,
+      },
+    },
+    "31": { class_type: "PreviewAny", inputs: { source: ["30", 0] } },
+  };
+}
+
 function saveNode(prefix) {
   return prefs.image_format === "jxl" && prefs.jxl_available
     ? { class_type: "ApocladaSaveImageJXL", inputs: { filename_prefix: prefix, lossless: prefs.jxl_lossless, images: ["17", 0] } }
@@ -452,7 +518,8 @@ function buildKrea2Workflow(s, model, width, height) {
     "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "krea2", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
-    "4": { class_type: "CLIPTextEncode", inputs: { text: s.prompt, clip: ["2", 0] } },
+    ...(s.enhance && enhanceNodes(s, { prompt: KREA2_ENHANCE + s.prompt, max_length: 512, "sampling_mode.repetition_penalty": 1.05 })),
+    "4": { class_type: "CLIPTextEncode", inputs: { text: s.enhance ? ["30", 0] : s.prompt, clip: ["2", 0] } },
     "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
     "6": { class_type: "EmptyLatentImage", inputs: { width, height, batch_size: s.batch } },
     "15": { class_type: "ModelSamplingAuraFlow", inputs: { shift: s.shift, model: ["1", 0] } },
@@ -598,7 +665,7 @@ async function collectResult(id) {
   const entry = res && res.ok ? (await res.json())[id] : null;
   if (!entry) return false;
   const images = Object.values(entry.outputs || {}).flatMap((o) => o.images || []).filter((i) => i.type === "output");
-  if (images.length) showResults(images, id);
+  if (images.length) showResults(images, id, entry.outputs["31"]?.text?.[0]);
   else if (entry.status?.status_str === "error") {
     const err = (entry.status.messages || []).find((m) => m[0] === "execution_error");
     if (err) toast(`Error: ${err[1].exception_message}`);
@@ -607,7 +674,7 @@ async function collectResult(id) {
   return true;
 }
 
-function showResults(images, version) {
+function showResults(images, version, rewrite) {
   removePreview();
   const box = $("results");
   box.querySelector(".empty")?.remove();
@@ -635,7 +702,19 @@ function showResults(images, version) {
     el.dataset.key = imageKey(img);
     box.prepend(el);
   }
+  if (rewrite) box.prepend(rewriteCard(rewrite));
   while (box.children.length > 12) box.lastElementChild.remove();
+}
+
+// "Use as prompt" turns Enhance off too, so the rewrite isn't rewritten again.
+function rewriteCard(text) {
+  const use = el("button", { type: "button", className: "ghost", textContent: "Use as prompt" });
+  use.onclick = () => {
+    Object.assign(settings, { prompt: text, enhance: false, kind: "image" });
+    syncForm();
+    toast("Rewritten prompt copied to the prompt box. Enhance prompt is now off.");
+  };
+  return el("div", { className: "rewrite" }, el("span", { className: "label", textContent: "Rewritten prompt" }), el("p", { textContent: text }), use);
 }
 
 function showPreview(blob) {
@@ -685,6 +764,8 @@ function onEvent({ type, data }) {
       if (data.node && NODE_STAGES[data.node]) updateStatus(NODE_STAGES[data.node]);
       break;
     case "progress": {
+      // TextGenerate counts tokens against its length limit, which a rewrite rarely gets near.
+      if (data.node === "30") { updateStatus(`Rewriting prompt… ${data.value} token${data.value === 1 ? "" : "s"}`); break; }
       // Timed from the first step seen, which is later than step 1 when following a job already running.
       if (!progressStart || data.value <= 1) progressStart = { time: performance.now(), step: data.value };
       const perStep = data.value > progressStart.step ? (performance.now() - progressStart.time) / (data.value - progressStart.step) : 0;
@@ -859,7 +940,12 @@ async function reuseCurrent() {
   if (!sampler) { toast("This image has no saved settings"); return; }
   const node = (link) => (Array.isArray(link) ? graph[link[0]] : null);
   const s = sampler.inputs;
-  settings.prompt = node(s.positive)?.inputs.text ?? settings.prompt;
+  // With Enhance prompt on, the positive prompt comes from TextGenerate, whose input holds the typed
+  // prompt (after the Krea 2 instructions).
+  const text = node(s.positive)?.inputs.text;
+  const rewriter = node(text);
+  settings.enhance = rewriter?.class_type === "TextGenerate";
+  settings.prompt = (settings.enhance ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text) ?? settings.prompt;
   settings.negative = node(s.negative)?.inputs.text ?? "";
   settings.steps = s.steps;
   settings.cfg = s.cfg;
