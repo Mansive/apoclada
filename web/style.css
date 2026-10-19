@@ -183,7 +183,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; }
 .card h2 { font-size: 17px; margin: 0; }
 .card .note { margin: 0; }
-.packs, .updates { display: grid; gap: 12px; }
+.packs, .updates, .image-format { display: grid; gap: 12px; }
 .pack { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
 .pack-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pack-name { font-weight: 650; }

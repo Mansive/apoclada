@@ -73,6 +73,11 @@ if (settings.tuning?.fast) { settings.tuning.turbo = settings.tuning.fast; delet
 let models = [];
 let turboLora = null;
 let videoFiles = null;
+// Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
+let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false };
+// Safari and Chrome 155+ show JPEG XL. Other browsers get .jxl images as PNG copies made by the PC.
+const JXL_PROBE = "data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==";
+let jxlShown = false;
 let pending = load(PENDING_KEY, []);
 let running = null;
 let stopping = null;
@@ -112,6 +117,7 @@ function videoLength(seconds) {
 }
 
 function isVideo(item) { return /\.(mp4|webm|mov)$/i.test(item.filename); }
+function isJxl(item) { return /\.jxl$/i.test(item.filename); }
 
 /* ---------- form ---------- */
 
@@ -390,8 +396,14 @@ function buildWorkflow(s) {
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
-    "18": { class_type: "SaveImage", inputs: { filename_prefix: "studio/moss", images: ["17", 0] } },
+    "18": saveNode("studio/moss"),
   };
+}
+
+function saveNode(prefix) {
+  return prefs.image_format === "jxl" && prefs.jxl_available
+    ? { class_type: "ApocladaSaveImageJXL", inputs: { filename_prefix: prefix, lossless: prefs.jxl_lossless, images: ["17", 0] } }
+    : { class_type: "SaveImage", inputs: { filename_prefix: prefix, images: ["17", 0] } };
 }
 
 // Follows Comfy's Krea 2 Turbo template (euler, simple scheduler), with the shift exposed through
@@ -413,7 +425,7 @@ function buildKrea2Workflow(s, model, width, height) {
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
-    "18": { class_type: "SaveImage", inputs: { filename_prefix: "studio/krea2", images: ["17", 0] } },
+    "18": saveNode("studio/krea2"),
   };
 }
 
@@ -454,6 +466,7 @@ async function generate() {
   if (video && !videoFiles) { toast("The MiniMax H3 files are missing. Download them in Setup."); return; }
   if (settings.randomSeed) settings.seed = Math.floor(Math.random() * 2 ** 48);
   syncForm();
+  if (!video) prefs = await fetch("/studio/prefs").then((r) => r.json()).catch(() => prefs);
   const res = await fetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -523,6 +536,14 @@ function imageUrl(img) {
   return `/view?${new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "", type: "output", v: img.version ?? img.mtime ?? "" })}`;
 }
 
+function pngUrl(img) {
+  return `/studio/images/png?${new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "", v: img.version ?? img.mtime ?? "" })}`;
+}
+
+function displayUrl(img) {
+  return isJxl(img) && !jxlShown ? pngUrl(img) : imageUrl(img);
+}
+
 function imageKey(img) {
   return `${img.subfolder || ""}/${img.filename}`;
 }
@@ -567,7 +588,7 @@ function showResults(images, version) {
     } else {
       el = document.createElement("img");
       el.alt = settings.prompt;
-      el.src = imageUrl(img);
+      el.src = displayUrl(img);
     }
     el.onclick = () => openViewer(list, list.indexOf(img));
     el.dataset.key = imageKey(img);
@@ -740,7 +761,7 @@ function showViewerImage() {
     $("v-video").src = imageUrl(item);
   } else {
     unloadVideo($("v-video"));
-    $("v-img").src = imageUrl(item);
+    $("v-img").src = displayUrl(item);
   }
   $("v-save").hidden = !video;
   $("v-save").href = imageUrl(item);
@@ -868,11 +889,13 @@ function reuseVideo(graph, h3) {
   toast("Settings loaded with the same seed. Turn on “Randomize” for variations.");
 }
 
-// Sends an image from the gallery to Video mode as the start frame.
+// Sends an image from the gallery to Video mode as the start frame. JPEG XL goes as the PC's PNG copy
+// so the start image loads in any browser and in LoadImage.
 async function animateCurrent() {
   const img = viewer.list[viewer.index];
-  const blob = await fetch(imageUrl(img)).then((r) => r.blob()).catch(() => null);
-  if (!blob || !(await setStartImage(new File([blob], img.filename, { type: blob.type })))) return;
+  const blob = await fetch(isJxl(img) ? pngUrl(img) : imageUrl(img)).then((r) => r.blob()).catch(() => null);
+  const name = img.filename.replace(/\.jxl$/i, ".png");
+  if (!blob || !(await setStartImage(new File([blob], name, { type: blob.type })))) return;
   settings.kind = "video";
   syncForm();
   closeViewer();
@@ -970,6 +993,43 @@ async function setupAction(action, pack) {
   loadSetup();
 }
 
+// Sizes are from a 1 MP MOSS image: PNG 1.4 MB, lossless JPEG XL 0.9 MB, lossy (libjxl distance 1) 0.15 MB.
+async function loadPrefs(change) {
+  const p = await fetch("/studio/prefs", change && {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change),
+  }).then((r) => r.json()).catch(() => null);
+  if (!p) { toast("Can't reach the PC"); return; }
+  prefs = p;
+  const radio = (label, detail, checked, change, disabled = false) => {
+    const b = el("button", { type: "button", disabled, onclick: () => loadPrefs(change) }, label, el("small", { textContent: detail }));
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", checked);
+    return b;
+  };
+  const group = (...buttons) => {
+    const g = el("div", { className: "segmented two" }, ...buttons);
+    g.setAttribute("role", "radiogroup");
+    return g;
+  };
+  const jxl = p.image_format === "jxl" && p.jxl_available;
+  $("image-format").replaceChildren(...[
+    group(
+      radio("PNG", "Works everywhere", !jxl, { image_format: "png" }),
+      radio("JPEG XL", "Smaller files", jxl, { image_format: "jxl" }, !p.jxl_available)),
+    jxl && group(
+      radio("Lossless", "About 65% of PNG", p.jxl_lossless, { jxl_lossless: true }),
+      radio("Lossy", "About 10% of PNG", !p.jxl_lossless, { jxl_lossless: false })),
+    el("span", { className: "note", textContent: !jxl
+      ? "PNG opens in every app and browser. A 1 MP image is about 1.4 MB."
+      : p.jxl_lossless
+        ? "Lossless keeps every pixel exactly as PNG would."
+        : "Lossy looks the same as PNG at normal viewing, but isn't pixel-identical: very fine detail shifts slightly." }),
+    jxl && el("span", { className: "note", textContent: "Safari and Chrome 155 or newer show JPEG XL; other browsers here see a PNG copy. Many apps outside the browser can't open .jxl files yet." }),
+    el("span", { className: "note", textContent: "Applies to new images from every device. Existing images keep their format." }),
+    !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC. Install Apoclada's requirements.txt into ComfyUI's Python, then restart ComfyUI." }),
+  ].filter(Boolean));
+}
+
 async function loadUpdates(check) {
   const u = await fetch(`/studio/update${check ? "?check=1" : ""}`).then((r) => r.json()).catch(() => null);
   if (!u) return;
@@ -1009,7 +1069,7 @@ function selectTab(name) {
   $("tab-gallery").hidden = name !== "gallery";
   $("tab-setup").hidden = name !== "setup";
   if (name === "gallery") loadGallery();
-  if (name === "setup") { loadSetup(); loadUpdates(); }
+  if (name === "setup") { loadSetup(); loadPrefs(); loadUpdates(); }
 }
 
 let toastTimer;
@@ -1032,6 +1092,7 @@ async function init() {
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
   fetch("/studio/host").then((r) => r.json()).then(({ host }) => { $("v-reveal").hidden = !host; }).catch(() => {});
+  jxlShown = await imageSize(JXL_PROBE).then(() => true, () => false);
   await loadModels();
   // A fresh install has nothing to generate with yet, so it opens on Setup.
   if (!models.length && !videoFiles) selectTab("setup");

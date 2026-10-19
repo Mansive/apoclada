@@ -5,6 +5,7 @@ the page itself, gallery listing, metadata and delete, model downloads and self-
 """
 import asyncio
 import json
+import mimetypes
 import os
 import socket
 import subprocess
@@ -14,19 +15,29 @@ from io import BytesIO
 
 import aiohttp
 import av
+import numpy as np
 from aiohttp import web
 from PIL import Image
 
 import folder_paths
 from comfy.cli_args import args
 from comfyui_version import __version__ as COMFYUI_VERSION
+from nodes import SaveImage
 from server import PromptServer
 
-NODE_CLASS_MAPPINGS = {}
+# JPEG XL needs pillow-jxl-plugin (requirements.txt). Importing it teaches Pillow, and with it the
+# gallery, Reuse and ComfyUI's own loaders, to read .jxl. Updates only git pull, so a copy that
+# hasn't installed it yet keeps working with PNG and Setup says what's missing.
+try:
+    import pillow_jxl
+except ImportError:
+    pillow_jxl = None
+# /view picks the Content-Type from mimetypes, which only knows .jxl where Windows has a JPEG XL codec.
+mimetypes.add_type("image/jxl", ".jxl")
 
 PLUGIN_DIR = os.path.dirname(__file__)
 WEB_ROOT = os.path.join(PLUGIN_DIR, "web")
-IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg"}
+IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg", ".jxl"}
 VIDEO_EXTS = {".mp4", ".webm", ".mov"}
 # Krea 2 support and the native MOSS-Image and MiniMax H3 nodes arrived in ComfyUI 0.41.
 COMFYUI_MIN = "0.41.0"
@@ -70,6 +81,72 @@ PACKS = [
 ]
 
 routes = PromptServer.instance.routes
+
+
+# SaveImage's twin for JPEG XL. The workflow goes into Exif the way ComfyUI writes WebP ("prompt:"
+# in the Model tag, other extra_pnginfo keys counting down from Make) so Reuse settings can read it.
+class SaveImageJXL(SaveImage):
+    DESCRIPTION = "Saves the input images to your ComfyUI output directory as JPEG XL."
+
+    @classmethod
+    def INPUT_TYPES(s):
+        types = SaveImage.INPUT_TYPES()
+        types["required"]["lossless"] = ("BOOLEAN", {"default": True})
+        return types
+
+    def save_images(self, images, filename_prefix="ComfyUI", lossless=True, prompt=None, extra_pnginfo=None):
+        full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
+        exif = Image.Exif()
+        if not args.disable_metadata:
+            if prompt is not None:
+                exif[0x0110] = "prompt:" + json.dumps(prompt)
+            for tag, key in zip(range(0x010F, 0, -1), extra_pnginfo or {}):
+                exif[tag] = f"{key}:{json.dumps(extra_pnginfo[key])}"
+        results = []
+        for batch_number, image in enumerate(images):
+            img = Image.fromarray(np.clip(255. * image.cpu().numpy(), 0, 255).astype(np.uint8))
+            file = f"{filename.replace('%batch_num%', str(batch_number))}_{counter:05}_.jxl"
+            # Quality 90 is libjxl's distance 1, its "visually lossless" target. Compressed metadata
+            # boxes would come back unreadable, so Exif is stored as is.
+            img.save(os.path.join(full_output_folder, file), "JXL", lossless=lossless, quality=90, effort=7,
+                     exif=exif.tobytes() if exif else None, use_container=True)
+            results.append({"filename": file, "subfolder": subfolder, "type": self.type})
+            counter += 1
+        return {"ui": {"images": results}, "result": (images,)}
+
+
+NODE_CLASS_MAPPINGS = {"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {}
+NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImageJXL": "Save Image (JPEG XL)"}
+
+# Studio-wide choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
+PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
+PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True}
+
+
+def load_prefs():
+    try:
+        with open(PREFS_FILE, encoding="utf-8") as f:
+            return {**PREF_DEFAULTS, **json.load(f)}
+    except FileNotFoundError:
+        return dict(PREF_DEFAULTS)
+
+
+@routes.get("/studio/prefs")
+async def studio_prefs(request):
+    return web.json_response({**load_prefs(), "jxl_available": pillow_jxl is not None})
+
+
+@routes.post("/studio/prefs")
+async def studio_prefs_save(request):
+    data = await request.json()
+    prefs = load_prefs()
+    if data.get("image_format") in ("png", "jxl"):
+        prefs["image_format"] = data["image_format"]
+    if isinstance(data.get("jxl_lossless"), bool):
+        prefs["jxl_lossless"] = data["jxl_lossless"]
+    with open(PREFS_FILE, "w", encoding="utf-8") as f:
+        json.dump(prefs, f)
+    return web.json_response({**prefs, "jxl_available": pillow_jxl is not None})
 
 
 def have(name):
@@ -320,6 +397,17 @@ async def studio_image_thumb(request):
     return web.Response(body=buffer.getvalue(), content_type="image/webp", headers={"Cache-Control": "max-age=86400"})
 
 
+# A PNG copy of a saved image, for browsers that can't show JPEG XL and for Animate, whose start
+# image has to load in the browser and in ComfyUI's LoadImage.
+@routes.get("/studio/images/png")
+async def studio_image_png(request):
+    path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
+    with Image.open(path) as img:
+        buffer = BytesIO()
+        img.save(buffer, format="png", compress_level=1)
+    return web.Response(body=buffer.getvalue(), content_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
 @routes.get("/studio/images/info")
 async def studio_image_info(request):
     path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
@@ -332,6 +420,9 @@ async def studio_image_info(request):
         with Image.open(path) as img:
             prompt = img.info.get("prompt")
             width, height = img.size
+            if prompt is None:
+                model = img.getexif().get(0x0110, "")
+                prompt = model.removeprefix("prompt:") if model.startswith("prompt:") else None
     return web.json_response({"prompt": json.loads(prompt) if prompt else None, "width": width, "height": height})
 
 
