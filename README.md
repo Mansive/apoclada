@@ -58,8 +58,11 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 - **Kroma** is hosted on Civitai, which only lets signed-in accounts download. Setup links to it.
   Download `kromaKrea2_opd.safetensors` yourself and put it in `models/diffusion_models`. Setup
   downloads its text encoder and VAE.
-- **Rapid mode** for MOSS also needs the rapid-moss custom node, which runs darask0's 4-step adapter.
-  Until it's installed, Rapid stays grayed out.
+- **Rapid mode** for MOSS also needs the
+  [rapid-moss custom node](https://huggingface.co/darask0/MOSS-Image_4-step_adapter_lora/tree/main/comfyui/rapid-moss),
+  which runs darask0's 4-step adapter. Copy its `rapid-moss` folder into `ComfyUI/custom_nodes` and
+  restart ComfyUI. Setup downloads the adapter files. Until the node is installed, Rapid stays
+  grayed out.
 
 Model sources: Comfy-Org (MOSS-Image, Krea 2 and MiniMax H3 repackages), Black Forest Labs (FLUX.2
 small decoder for MOSS), lodestones (MOSS 8-step DMD LoRA and Kroma), darask0 (rapid-moss adapter),
@@ -105,8 +108,6 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
 | Quality | 20 (adjustable) | Best detail |
 | Turbo | 8 | Official Turbo LoRA |
 | Fast | 4 | DMAD LoRA; rougher, fine for simple animations |
-
-On an RX 9070, a 5-second clip at 864×480 takes about 104 s in Turbo and about 75 s in Fast.
 
 Before each video, Studio unloads ComfyUI's models. This works around a slowdown on AMD
 (ComfyUI issue #16502) where a video made right after another job samples about 3 times slower.
