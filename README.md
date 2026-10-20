@@ -172,7 +172,8 @@ Before each video, Studio unloads ComfyUI's models. This works around a slowdown
 
 The gallery shows every image and video in ComfyUI's output folder, newest first. In the viewer:
 
-- **Info** shows the prompt, the enhanced prompt, the model, the settings and the file encoding.
+- **Info** shows the prompt, the enhanced prompt, the model, the settings, how long the file took
+  to generate and the file encoding. When a job finishes, Create also shows how long it took.
 - **Reuse settings** loads that file's prompt and settings into Create.
 - **Animate** uses the image as a video's start image.
 - **Save** (videos) downloads the file. On iPhone or iPad, open the video in Files and use

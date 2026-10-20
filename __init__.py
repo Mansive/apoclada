@@ -103,15 +103,46 @@ PACKS = [
 
 routes = PromptServer.instance.routes
 
+# ComfyUI keeps no record of when a job started, so Studio notes when each one leaves the queue, the
+# moment ComfyUI's own "Prompt executed in" time starts from. Jobs run one at a time, so the save
+# nodes measure from the latest.
+job_started = None
+queue_get = PromptServer.instance.prompt_queue.get
+
+
+def timed_queue_get(*args, **kwargs):
+    global job_started
+    item = queue_get(*args, **kwargs)
+    if item is not None:
+        job_started = time.perf_counter()
+    return item
+
+
+PromptServer.instance.prompt_queue.get = timed_queue_get
+
 
 def jxl_box(kind, payload):
     return (len(payload) + 8).to_bytes(4, "big") + kind + payload
 
 
-# SaveImage that also stores the prompt Enhance prompt wrote, as an extra_pnginfo entry next to the
-# workflow, so the viewer's Info can show it. The workflow alone only holds the prompt that was typed.
-class SaveImageEnhanced(SaveImage):
-    DESCRIPTION = "Saves the input images to your ComfyUI output directory, with the enhanced prompt in the metadata."
+# What Studio's save nodes add to ComfyUI's metadata, as extra_pnginfo entries next to the workflow:
+# how long the job had run when saving started, and the prompt Enhance prompt wrote (the workflow
+# alone only holds the prompt that was typed). The viewer's Info shows both.
+def studio_metadata(extra_pnginfo, enhanced_prompt=None):
+    extra = {**(extra_pnginfo or {}), "generation_time": round(time.perf_counter() - job_started, 1)}
+    if enhanced_prompt:
+        extra["enhanced_prompt"] = enhanced_prompt
+    return extra
+
+
+# The time also goes back with the node's results, so Create can say "Done in …" without opening the file.
+def with_time(output, extra):
+    output["ui"]["generation_time"] = [extra["generation_time"]]
+    return output
+
+
+class SaveImageStudio(SaveImage):
+    DESCRIPTION = "Saves the input images to your ComfyUI output directory, with the generation time and enhanced prompt in the metadata."
 
     @classmethod
     def INPUT_TYPES(s):
@@ -120,11 +151,8 @@ class SaveImageEnhanced(SaveImage):
         return types
 
     def save_images(self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None, enhanced_prompt=None):
-        return super().save_images(images, filename_prefix, prompt, with_enhanced(extra_pnginfo, enhanced_prompt))
-
-
-def with_enhanced(extra_pnginfo, enhanced_prompt):
-    return {**(extra_pnginfo or {}), "enhanced_prompt": enhanced_prompt} if enhanced_prompt else extra_pnginfo
+        extra = studio_metadata(extra_pnginfo, enhanced_prompt)
+        return with_time(super().save_images(images, filename_prefix, prompt, extra), extra)
 
 
 # SaveImage's twin for JPEG XL. The workflow goes into Exif the way ComfyUI writes WebP ("prompt:"
@@ -134,12 +162,12 @@ class SaveImageJXL(SaveImage):
 
     @classmethod
     def INPUT_TYPES(s):
-        types = SaveImageEnhanced.INPUT_TYPES()
+        types = SaveImageStudio.INPUT_TYPES()
         types["required"]["lossless"] = ("BOOLEAN", {"default": True})
         return types
 
     def save_images(self, images, filename_prefix="ComfyUI", lossless=True, prompt=None, extra_pnginfo=None, enhanced_prompt=None):
-        extra_pnginfo = with_enhanced(extra_pnginfo, enhanced_prompt)
+        extra_pnginfo = studio_metadata(extra_pnginfo, enhanced_prompt)
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
         exif = Image.Exif()
         if not args.disable_metadata:
@@ -164,7 +192,7 @@ class SaveImageJXL(SaveImage):
                 f.write(data)
             results.append({"filename": file, "subfolder": subfolder, "type": self.type})
             counter += 1
-        return {"ui": {"images": results}, "result": (images,)}
+        return with_time({"ui": {"images": results}, "result": (images,)}, extra_pnginfo)
 
 
 # Video encoders: the graphics card's own (NVIDIA NVENC, AMD AMF) or x264/x265 on the CPU. The GPU
@@ -230,11 +258,12 @@ class SaveVideoMP4:
         if not encoder_opens(codec, encoder, width, height):
             encoder = "software"
         name, options = VIDEO_ENCODERS[codec][encoder]
+        extra = studio_metadata(extra_pnginfo)
         full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(filename_prefix, folder_paths.get_output_directory(), width, height)
         file = f"{filename}_{counter:05}_.mp4"
         with av.open(os.path.join(full_output_folder, file), "w", format="mp4", options={"movflags": "use_metadata_tags+faststart"}) as out:
             if not args.disable_metadata:
-                for key, value in {**(extra_pnginfo or {}), **({"prompt": prompt} if prompt is not None else {})}.items():
+                for key, value in {**extra, **({"prompt": prompt} if prompt is not None else {})}.items():
                     out.metadata[key] = json.dumps(value)
             # Info shows the encoder that actually ran, which can differ from the one asked for.
             out.metadata["video_encoder"] = name
@@ -261,11 +290,11 @@ class SaveVideoMP4:
                 frame.sample_rate, frame.pts = sample_rate, 0
                 out.mux(audio.encode(frame))
                 out.mux(audio.encode(None))
-        return {"ui": {"images": [{"filename": file, "subfolder": subfolder, "type": "output"}], "animated": (True,)}}
+        return with_time({"ui": {"images": [{"filename": file, "subfolder": subfolder, "type": "output"}], "animated": (True,)}}, extra)
 
 
-NODE_CLASS_MAPPINGS = {"ApocladaSaveImage": SaveImageEnhanced, "ApocladaSaveVideo": SaveVideoMP4, **({"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {})}
-NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (with enhanced prompt)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)", "ApocladaSaveVideo": "Save Video (GPU or CPU)"}
+NODE_CLASS_MAPPINGS = {"ApocladaSaveImage": SaveImageStudio, "ApocladaSaveVideo": SaveVideoMP4, **({"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {})}
+NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (Studio)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)", "ApocladaSaveVideo": "Save Video (GPU or CPU)"}
 
 # Studio-wide choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
 PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
@@ -579,7 +608,7 @@ async def studio_image_info(request):
     path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
     if is_video(path):
         with av.open(path) as container:
-            prompt = container.metadata.get("prompt")
+            prompt, seconds = container.metadata.get("prompt"), container.metadata.get("generation_time")
             stream = container.streams.video[0]
             width, height = stream.width, stream.height
             audio = container.streams.audio[0].codec_context if container.streams.audio else None
@@ -588,17 +617,16 @@ async def studio_image_info(request):
         enhanced = None
     else:
         with Image.open(path) as img:
-            prompt = img.info.get("prompt")
-            enhanced = img.info.get("enhanced_prompt")
+            prompt, enhanced, seconds = img.info.get("prompt"), img.info.get("enhanced_prompt"), img.info.get("generation_time")
             width, height = img.size
             encoding = {"format": img.format}
             if prompt is None:
                 # JPEG XL keeps them in Exif: the workflow in Model, extra_pnginfo counting down from Make.
                 exif = img.getexif()
                 tags = {v.split(":", 1)[0]: v.split(":", 1)[1] for t in range(0x0110, 0, -1) if isinstance(v := exif.get(t), str) and ":" in v}
-                prompt, enhanced = tags.get("prompt"), tags.get("enhanced_prompt")
+                prompt, enhanced, seconds = tags.get("prompt"), tags.get("enhanced_prompt"), tags.get("generation_time")
     return web.json_response({"prompt": json.loads(prompt) if prompt else None, "enhanced_prompt": json.loads(enhanced) if enhanced else None,
-                              "width": width, "height": height, "encoding": encoding, "bytes": os.path.getsize(path)})
+                              "generation_time": json.loads(seconds) if seconds else None, "width": width, "height": height, "encoding": encoding, "bytes": os.path.getsize(path)})
 
 
 # "Show in folder" opens Explorer on the PC, so it's only offered to a browser on the PC itself,

@@ -566,11 +566,11 @@ function easyCacheNode(model) {
   return { "40": { class_type: "EasyCache", inputs: { model, reuse_threshold: 0.2, start_percent: 0.15, end_percent: 0.95, verbose: false } } };
 }
 
-// Apoclada's save nodes write the enhanced prompt into the file for the viewer's Info.
+// Apoclada's save nodes write the generation time and enhanced prompt into the file for the viewer's Info.
 function saveNode(prefix, s) {
   const inputs = { filename_prefix: prefix, images: ["17", 0], ...(s.enhance && { enhanced_prompt: ["30", 0] }) };
   if (prefs.image_format === "jxl" && prefs.jxl_available) return { class_type: "ApocladaSaveImageJXL", inputs: { ...inputs, lossless: prefs.jxl_lossless } };
-  return { class_type: s.enhance ? "ApocladaSaveImage" : "SaveImage", inputs };
+  return { class_type: "ApocladaSaveImage", inputs };
 }
 
 // Follows Comfy's Krea 2 Turbo template (euler, simple scheduler), with the shift exposed through
@@ -743,9 +743,13 @@ async function collectResult(id) {
   const res = await fetch(`/history/${id}`).catch(() => null);
   const entry = res && res.ok ? (await res.json())[id] : null;
   if (!entry) return false;
-  const images = Object.values(entry.outputs || {}).flatMap((o) => o.images || []).filter((i) => i.type === "output");
-  if (images.length) showResults(images, id);
-  else if (entry.status?.status_str === "error") {
+  const outputs = Object.values(entry.outputs || {});
+  const images = outputs.flatMap((o) => o.images || []).filter((i) => i.type === "output");
+  const seconds = outputs.find((o) => o.generation_time)?.generation_time[0];
+  if (images.length) {
+    showResults(images, id);
+    if (seconds !== undefined) toast(`Done in ${duration(seconds)}`);
+  } else if (entry.status?.status_str === "error") {
     const err = (entry.status.messages || []).find((m) => m[0] === "execution_error");
     if (err) toast(`Error: ${err[1].exception_message}`);
   }
@@ -1011,7 +1015,8 @@ async function showInfo() {
   $("v-info-list").replaceChildren(el("dd", { className: "note", textContent: "Loading…" }));
   const info = await imageInfo(img);
   if (viewer.list[viewer.index] !== img) return;
-  const rows = [...infoRows(info), ...encodingRows(info), ["File", img.filename]].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  const time = info?.generation_time;
+  const rows = [...infoRows(info), ["Generation time", time == null ? null : duration(time)], ...encodingRows(info), ["File", img.filename]].filter(([, value]) => value !== null && value !== undefined && value !== "");
   $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, value))));
 }
 
@@ -1067,6 +1072,12 @@ function infoRows(info) {
     ["Sampler", s.sampler_name && `${s.sampler_name} · ${s.scheduler}`],
     ["EasyCache", find("EasyCache") && "On"],
   ];
+}
+
+// "48 s", or "2 min 5 s" from a minute up.
+function duration(seconds) {
+  const s = Math.round(seconds);
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 }
 
 const FORMATS = { PNG: "PNG", JXL: "JPEG XL", JPEG: "JPEG", WEBP: "WebP", h264: "H.264", hevc: "H.265", av1: "AV1", vp9: "VP9", aac: "AAC", opus: "Opus" };
