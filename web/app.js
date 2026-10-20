@@ -17,7 +17,7 @@ const SLG_LAYERS = [["", "Off"], ["22", "22"], ["24", "24"], ["26", "26"]];
 // The lines are Japanese, one of the 11 languages H3's README lists as stable for dialogue.
 // Later shots start with their cut time (MM:SS.mmm), which has to fall inside the video, so the
 // examples cut to a second shot at 1.5 s to fit every length from 2 s up.
-const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she blows gently across the mug and smiles. [Shot 2] At 00:01.500, the camera cuts to a close-up of Hatsune Miku's face lit by the warm café light as she takes a slow sip, smiles, and with a soft, bright voice (S1) says: <d>[Japanese] 美味しい</d>
+const VIDEO_PROMPT = `integrated_multimodal_description: [Shot 1] 2D-animated, soft anime style, a medium close-up shot frames Hatsune Miku, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window in a cream knit sweater with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as she takes a slow sip from the mug and smiles. [Shot 2] At 00:01.500, the camera cuts to a close-up of Hatsune Miku's face lit by the warm café light as she lowers the mug, smiles, and with a soft, bright voice (S1) says: <d>[Japanese] 美味しい</d>
 
 overall_soundscape: Rain patters steadily against the window glass, the ceramic mug clinks softly on the wooden table, and muffled traffic hums outside.
 
