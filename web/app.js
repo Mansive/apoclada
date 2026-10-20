@@ -1070,7 +1070,7 @@ function infoRows(info) {
 }
 
 const FORMATS = { PNG: "PNG", JXL: "JPEG XL", JPEG: "JPEG", WEBP: "WebP", h264: "H.264", hevc: "H.265", av1: "AV1", vp9: "VP9", aac: "AAC", opus: "Opus" };
-const ENCODERS = { h264_nvenc: "NVIDIA GPU", hevc_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", hevc_amf: "AMD GPU", libx264: "Software (x264)", libx265: "Software (x265)" };
+const ENCODERS = { h264_nvenc: "NVIDIA NVENC", hevc_nvenc: "NVIDIA NVENC", h264_amf: "AMD AMF", hevc_amf: "AMD AMF", libx264: "Software (x264)", libx265: "Software (x265)" };
 
 // What the file itself is: its format, the encoder that made it, and its size.
 function encodingRows(info) {
