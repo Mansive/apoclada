@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=101">
+<link rel="stylesheet" href="/studio/assets/style.css?v=102">
 </head>
 <body>
 <header class="topbar">
@@ -151,6 +151,10 @@
           <label class="switch"><input id="enhance" type="checkbox"><span>Enhance prompt</span></label>
           <span class="note">Rewrites your prompt using the model's official template. Read the result under Info. The text model is censored, so it doesn't work for NSFW prompts.</span>
         </div>
+        <div id="easycache-field" class="field">
+          <label class="switch"><input id="easycache" type="checkbox"><span>EasyCache</span></label>
+          <span class="note">Skips steps where the image barely changes, so generating takes about a third less time. Details can come out a little softer.</span>
+        </div>
         <div id="shift-field" class="field">
           <span class="label">Sigma shift <output id="shift-out" class="value"></output></span>
           <input id="shift" type="range" min="1" max="10" step="0.5">
@@ -260,6 +264,6 @@
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=101"></script>
+<script src="/studio/assets/app.js?v=102"></script>
 </body>
 </html>

@@ -35,7 +35,7 @@ const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
-  randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "", enhance: false,
+  randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "", enhance: false, easyCache: false,
   mode: "full", tuning: {}, kind: "image",
   video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, turbo: true, steps: 20, start: null },
 };
@@ -306,6 +306,7 @@ function syncForm() {
   setUnused($("negative-field"), distilled || settings.cfg <= 1, distilled ? unusedHere : "Not used at CFG 1");
   setUnused($("cfg-field"), distilled, unusedHere);
   setUnused($("slg-field"), distilled || krea2, distilled ? unusedHere : "Not used with Krea 2 models");
+  setUnused($("easycache-field"), distilled, `${unusedHere}: its few steps all change the image too much to skip`);
   for (const id of ["shift-field", "sampler-field", "scheduler-field"]) setUnused($(id), rapid, unusedHere);
   [$("steps").min, $("steps").max] = mode.steps;
   $("steps-note").textContent = mode.note;
@@ -323,6 +324,7 @@ function syncForm() {
     : [
         turbo ? "Turbo" : rapid ? "Rapid" : "",
         settings.enhance ? "enhanced prompt" : "",
+        settings.easyCache && !distilled ? "EasyCache" : "",
         `${width}×${height}`,
         `${settings.steps} steps`,
         distilled ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
@@ -337,6 +339,7 @@ function syncForm() {
   $("seed").disabled = settings.randomSeed;
   $("random-seed").checked = settings.randomSeed;
   $("enhance").checked = settings.enhance;
+  $("easycache").checked = settings.easyCache;
   $("batch-out").textContent = settings.batch;
   $("model").value = settings.model;
   // Krea 2's shift of 1.15 sits between MOSS's half steps.
@@ -454,6 +457,7 @@ function bindForm() {
   $("seed").onchange = (e) => { settings.seed = Math.max(0, Math.floor(Number(e.target.value) || 0)); syncForm(); };
   $("random-seed").onchange = (e) => { settings.randomSeed = e.target.checked; syncForm(); };
   $("enhance").onchange = (e) => { settings.enhance = e.target.checked; syncForm(); };
+  $("easycache").onchange = (e) => { settings.easyCache = e.target.checked; syncForm(); };
   $("model").onchange = (e) => { settings.model = e.target.value; matchModeToModel(); syncForm(); };
   for (const b of document.querySelectorAll(".stepper button")) {
     b.onclick = () => { settings.batch = Math.min(4, Math.max(1, settings.batch + Number(b.dataset.step))); syncForm(); };
@@ -506,11 +510,12 @@ function buildWorkflow(s) {
       class_type: "SkipLayerGuidanceDiTSimple",
       inputs: { double_layers: "", single_layers: s.slgLayer, start_percent: 0, end_percent: 1, model: ["15", 0] },
     },
+    ...(s.easyCache && !turbo && easyCacheNode(["13", 0])),
     "16": {
       class_type: "KSampler",
       inputs: {
         seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: s.sampler, scheduler: s.scheduler, denoise: 1,
-        model: ["13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
+        model: [s.easyCache && !turbo ? "40" : "13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
@@ -551,6 +556,12 @@ function enhanceNodes(s, inputs) {
   };
 }
 
+// ComfyUI's EasyCache with its default settings, which skip about half of Quality's 50 steps and 3 of
+// Krea 2's 8. Turbo and Rapid skip none, so they never get it.
+function easyCacheNode(model) {
+  return { "40": { class_type: "EasyCache", inputs: { model, reuse_threshold: 0.2, start_percent: 0.15, end_percent: 0.95, verbose: false } } };
+}
+
 // Apoclada's save nodes write the enhanced prompt into the file for the viewer's Info.
 function saveNode(prefix, s) {
   const inputs = { filename_prefix: prefix, images: ["17", 0], ...(s.enhance && { enhanced_prompt: ["30", 0] }) };
@@ -570,11 +581,12 @@ function buildKrea2Workflow(s, model, width, height) {
     "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
     "6": { class_type: "EmptyLatentImage", inputs: { width, height, batch_size: s.batch } },
     "15": { class_type: "ModelSamplingAuraFlow", inputs: { shift: s.shift, model: ["1", 0] } },
+    ...(s.easyCache && easyCacheNode(["15", 0])),
     "16": {
       class_type: "KSampler",
       inputs: {
         seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: s.sampler, scheduler: s.scheduler, denoise: 1,
-        model: ["15", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
+        model: [s.easyCache ? "40" : "15", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
@@ -1035,6 +1047,7 @@ function infoRows(info) {
     ["Sigma shift", (find("ModelSamplingAuraFlow") ?? find("ModelSamplingSD3"))?.shift],
     ["Layer skip guidance", slg === undefined ? null : String(slg).trim() || "Off"],
     ["Sampler", s.sampler_name && `${s.sampler_name} · ${s.scheduler}`],
+    ["EasyCache", find("EasyCache") && "On"],
   ];
 }
 
@@ -1093,6 +1106,7 @@ async function reuseCurrent() {
   const rapid = Object.values(graph).some((n) => n.class_type === "RapidMOSSAdapter");
   if (rapid && !rapidAdapter) { toast("This image used Rapid mode, which needs the rapid-moss node and adapter on the PC"); return; }
   settings.mode = rapid ? "rapid" : turbo ? "turbo" : "full";
+  settings.easyCache = Object.values(graph).some((n) => n.class_type === "EasyCache");
   settings.slgLayer = "";
   for (const n of Object.values(graph)) {
     if (n.class_type === "ModelSamplingSD3" || n.class_type === "ModelSamplingAuraFlow") settings.shift = n.inputs.shift;
