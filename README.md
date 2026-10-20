@@ -64,9 +64,64 @@ Downloads keep running if you close the page, and a stopped download resumes whe
   restart ComfyUI. Setup downloads the adapter files. Until the node is installed, Rapid stays
   grayed out.
 
-Model sources: Comfy-Org (MOSS-Image, Krea 2 and MiniMax H3 repackages), Black Forest Labs (FLUX.2
-small decoder for MOSS), lodestones (MOSS 8-step DMD LoRA and Kroma), darask0 (rapid-moss adapter),
-and Kijai/MiniMax-H3-experimental (LynnReal's light video VAE and ZhengmingYu's DMAD 4-step LoRA).
+### What's in each pack
+
+Most files are the ones ComfyUI's own templates use. The notes under each table explain where
+Studio differs and why. Speed figures were measured on an RX 9070.
+
+**MOSS-Image**
+
+| Part | File | Source |
+|---|---|---|
+| Diffusion model | `moss_image_sft_int8_convrot` | Comfy-Org/MOSS-Image |
+| Text encoder (Qwen3.5 9B) | `qwen3.5_9b_int8_convrot` | Comfy-Org/MOSS-Image |
+| VAE | `full_encoder_small_decoder` | black-forest-labs/FLUX.2-small-decoder |
+| Turbo LoRA (8 steps) | `moss-image-sft-8step-dmd` | lodestones/MOSS-Image-SFT-8-steps-dmd |
+| Rapid adapter (4 steps) | `rapid-moss-4step` (3 files) | darask0/MOSS-Image_4-step_adapter_lora |
+
+- **VAE:** Studio started with Comfy-Org's full `flux2-vae`. The MOSS team said their own release
+  decodes with FLUX.2's small decoder because it avoids odd spots and artifacts. It also decodes
+  about 40% faster, with no visible difference. ComfyUI's MOSS template has since moved to the same
+  small decoder (`flux2-vae_small`, a copy of Black Forest Labs' file).
+- **Diffusion model:** int8, like the template. It runs about a third faster than the bf16 version.
+- **Text encoder:** Studio uses the int8 version. The template uses the smaller 4-bit
+  `qwen3.5_9b_w4a8_gptq` (7.3 GB instead of 9.7 GB). The two haven't been compared in Studio.
+- **Turbo and Rapid** are community distillations that ComfyUI's templates don't include.
+
+**Kroma**
+
+| Part | File | Source |
+|---|---|---|
+| Diffusion model | `kromaKrea2_opd` | lodestones, on Civitai (download by hand) |
+| Text encoder (Qwen3-VL 4B) | `qwen3vl_4b_int8_convrot` | Comfy-Org/Krea-2 |
+| VAE | `qwen_image_vae` | Comfy-Org/Krea-2 |
+
+- **Diffusion model:** ComfyUI's templates run Krea 2 Turbo. Studio runs lodestones' Kroma
+  fine-tune of it on the same nodes.
+- **Text encoder:** the template uses `qwen3vl_4b_fp8_scaled`. Studio uses Comfy-Org's int8
+  version, like its other models, which is slightly smaller (4.9 GB instead of 5.2 GB). The two
+  haven't been compared in Studio.
+- **VAE:** the same as the template.
+
+**MiniMax H3**
+
+| Part | File | Source |
+|---|---|---|
+| Diffusion model | `minimax_h3_fl2va_pruned_int8_convrot` | Comfy-Org/MiniMax-H3 |
+| Text encoder (Qwen3-VL 32B) | `qwen3vl_32b_minimax_h3_nvfp4_awq` | Comfy-Org/MiniMax-H3 |
+| Video VAE | `minimax_h3_lynnreal_light_vae_int8_convrot` | Kijai/MiniMax-H3-experimental |
+| Audio VAE | `minimax_h3_audio_vae_fp32` | Comfy-Org/MiniMax-H3 |
+| Turbo LoRA (8 steps) | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16` | Comfy-Org/MiniMax-H3 |
+| Fast LoRA (4 steps) | `minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16` | Kijai/MiniMax-H3-experimental |
+
+- **Video VAE:** the template uses Comfy-Org's `minimax_h3_video_vae_int8_convrot`. LynnReal's
+  light VAE keeps the same encoder but cuts the decoder from 36 to 26 blocks. Decoding is about
+  35% faster, frames stay within about 40 dB of the full VAE with no color shift, and the sound
+  is unchanged.
+- **Fast LoRA:** ZhengmingYu's DMAD distillation, not part of ComfyUI's templates. It takes about a
+  quarter less time than Turbo, but the picture is rougher and the sound a little quieter and duller.
+- **Everything else** matches the template. The 4-bit text encoder (nvfp4) runs natively on newer
+  NVIDIA cards; on AMD it's emulated but works.
 
 ## Making images
 
