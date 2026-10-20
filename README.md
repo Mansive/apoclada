@@ -51,7 +51,7 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 
 | Pack | What it makes | Download size |
 |---|---|---|
-| MOSS-Image | Images in Quality, Turbo and Rapid modes | 17.8 GB |
+| MOSS-Image | Images in Quality, Turbo and Rapid modes | 15.4 GB |
 | Kroma | Images in 8 steps | 5.1 GB, plus the model itself |
 | MiniMax H3 | Videos with sound | 41.7 GB |
 
@@ -74,7 +74,7 @@ Studio differs and why. Speed figures were measured on an RX 9070.
 | Part | File | Source |
 |---|---|---|
 | Diffusion model | `moss_image_sft_int8_convrot` | Comfy-Org/MOSS-Image |
-| Text encoder (Qwen3.5 9B) | `qwen3.5_9b_int8_convrot` | Comfy-Org/MOSS-Image |
+| Text encoder (Qwen3.5 9B) | `qwen3.5_9b_w4a8_gptq` | Comfy-Org/MOSS-Image |
 | VAE | `flux2-vae_small` | Comfy-Org/MOSS-Image |
 | Turbo LoRA (8 steps) | `moss-image-sft-8step-dmd` | lodestones/MOSS-Image-SFT-8-steps-dmd |
 | Rapid adapter (4 steps) | `rapid-moss-4step` (3 files) | darask0/MOSS-Image_4-step_adapter_lora |
@@ -84,8 +84,9 @@ Studio differs and why. Speed figures were measured on an RX 9070.
   about 40% faster, with no visible difference. ComfyUI's MOSS template has since moved to the same
   small decoder, and Studio now uses the template's copy of Black Forest Labs' file.
 - **Diffusion model:** int8, like the template. It runs about a third faster than the bf16 version.
-- **Text encoder:** Studio uses the int8 version. The template uses the smaller 4-bit
-  `qwen3.5_9b_w4a8_gptq` (7.3 GB instead of 9.7 GB). The two haven't been compared in Studio.
+- **Text encoder:** 4-bit, like the template. Studio started with Comfy-Org's int8 version (9.7 GB
+  instead of 7.3 GB). Side by side, the images were just as good and peak VRAM was about 1 GB lower.
+  Enhance prompt ran about twice as fast, because the smaller encoder fits beside the image model.
 - **Turbo and Rapid** are community distillations that ComfyUI's templates don't include.
 
 **Kroma**

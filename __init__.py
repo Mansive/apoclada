@@ -53,7 +53,9 @@ folder_paths.add_model_folder_path("rapid_moss", os.path.join(folder_paths.model
 # Every file Apoclada can download: name -> (models folder, source, size in bytes).
 FILES = {
     "moss_image_sft_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors", 5413698958),
-    "qwen3.5_9b_int8_convrot.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors", 9748121532),
+    # 4-bit, as in ComfyUI's MOSS template. Images match the int8 version, and with about 2 GB less VRAM
+    # it fits beside the image model, so Enhance prompt rewrites about twice as fast here.
+    "qwen3.5_9b_w4a8_gptq.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors", 7343591088),
     # FLUX.2's small decoder, as in MOSS-Image's own release and ComfyUI's MOSS template. The MOSS team
     # says it avoids odd spots and artifacts, and it decodes about 40% faster here than the full flux2-vae.
     "flux2-vae_small.safetensors": ("vae", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae_small.safetensors", 249521340),
@@ -74,7 +76,7 @@ FILES = {
     # Kijai/MiniMax-H3-experimental: ZhengmingYu's DMAD 4-step distillation LoRA, rank-reduced.
     "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors": ("loras", f"{HF}/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 366647000),
 }
-MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "flux2-vae_small.safetensors"}
+MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_w4a8_gptq.safetensors", "vae": "flux2-vae_small.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
 RAPID_FILES = [name for name in FILES if name.startswith(f"{RAPID_ADAPTER}/")]
 # Krea 2 and its fine-tunes (e.g. lodestones' Kroma) run on ComfyUI's native nodes with the
