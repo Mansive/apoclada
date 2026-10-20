@@ -621,6 +621,10 @@ async function generate() {
   if (settings.randomSeed) settings.seed = Math.floor(Math.random() * 2 ** 48);
   syncForm();
   prefs = await fetch("/studio/prefs").then((r) => r.json()).catch(() => prefs);
+  // On AMD, a video made after another generation samples about 3x slower until ComfyUI unloads
+  // everything (ComfyUI issue #16502). ComfyUI applies /free between jobs, so a video queued behind
+  // another job still gets it just before it starts.
+  if (video) await fetch("/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unload_models: true, free_memory: true }) }).catch(() => null);
   const res = await fetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
