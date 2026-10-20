@@ -462,7 +462,7 @@ function renderMedia() {
     item.kind === "audio" ? el("span", { className: "tile-icon", textContent: "♪" }) : el("img", { src: mediaUrl(item), alt: "" }),
     el("span", { textContent: caption }));
   $("media").replaceChildren(
-    v.extend && tile(v.extend, "Continues"),
+    ...(v.extend ? [tile(v.extend, "Continues")] : []),
     ...v.items.map((i) => tile(i, i.role === "ref" ? tags.get(i)[0] : i.role === "at" ? `At ${i.at} s` : i.role === "start" ? "Start" : "End")),
     el("button", { type: "button", className: "add", onclick: pickMedia }, el("span", { className: "tile-icon", textContent: "+" }), el("span", { textContent: "Add" })));
 }
@@ -540,7 +540,7 @@ function syncItem() {
     : item.kind === "audio" ? `Called <${tags[0]}> in the prompt. Use it as a voice, e.g. "<${tags[0]}> is the voice-timbre reference for <Subject 1> (S1)."`
     : {
         start: "The video starts on this image and keeps its shape.",
-        at: "The video passes through this image at the time set below.",
+        at: "The video passes through this image at the time above.",
         end: "The video ends on this image.",
         ref: `Called <${tags?.[0]}> in the prompt. The video follows its character, place or style without showing it as a frame.`,
       }[item.role];
