@@ -652,7 +652,8 @@ async function generate() {
   const res = await fetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: video ? buildVideoWorkflow(settings) : buildWorkflow(settings), client_id: clientId }),
+    // ComfyUI sends no previews unless started with --preview-method, so each job asks for them.
+    body: JSON.stringify({ prompt: video ? buildVideoWorkflow(settings) : buildWorkflow(settings), client_id: clientId, extra_data: { preview_method: "latent2rgb" } }),
   }).catch(() => null);
   if (!res) { toast("Can't reach the PC"); return; }
   const data = await res.json().catch(() => ({}));
