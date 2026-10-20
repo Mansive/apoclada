@@ -2,16 +2,14 @@
 
 A touch-friendly image and video app for ComfyUI. It runs inside ComfyUI at `/studio`, so you can
 generate from a phone or tablet while the PC does the work. There are no node graphs to wire up:
-pick a model, write a prompt and press Generate.
-
-Generation goes through ComfyUI's own API. Studio adds the page, a gallery, model downloads and
-one-tap updates.
+pick a model, write a prompt and press Generate. Generation goes through ComfyUI's own API; Studio
+adds the page, a gallery, model downloads and one-tap updates.
 
 ## Features
 
 - **Images** with MOSS-Image or Kroma (lodestones' Krea 2 fine-tune), with optional prompt enhancement
   that follows each model's official template.
-- **Videos with sound** with MiniMax H3, from a prompt or from a start image.
+- **Videos with sound** with MiniMax H3, from a prompt, images, references or an earlier video.
 - **Gallery** of everything in ComfyUI's output folder, with a full-screen viewer, the settings
   each file was made with, and Reuse settings.
 - **Setup** that downloads the models, picks image and video file formats, and updates Studio.
@@ -54,6 +52,7 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 | MOSS-Image | Images in Quality, Turbo and Rapid modes | 15.4 GB |
 | Kroma | Images in 8 steps | 5.1 GB, plus the model itself |
 | MiniMax H3 | Videos with sound | 41.7 GB |
+| MiniMax H3 references | Videos that follow reference pictures, videos and voices | 22.9 GB |
 
 - **Kroma** is hosted on Civitai, which only lets signed-in accounts download. Setup links to it.
   Download `kromaKrea2_opd.safetensors` yourself and put it in `models/diffusion_models`. Setup
@@ -114,6 +113,7 @@ Studio differs and why. Speed figures were measured on an RX 9070.
 | Audio VAE | `minimax_h3_audio_vae_fp32` | Comfy-Org/MiniMax-H3 |
 | Turbo LoRA (8 steps) | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16` | Comfy-Org/MiniMax-H3 |
 | Fast LoRA (4 steps) | `minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16` | Kijai/MiniMax-H3-experimental |
+| References model and Turbo LoRA (4 steps) | `minimax_h3_ref2va_pruned_int8_convrot`, `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16` | Comfy-Org/MiniMax-H3 |
 
 - **Video VAE:** the template uses Comfy-Org's `minimax_h3_video_vae_int8_convrot`. LynnReal's
   light VAE keeps the same encoder but cuts the decoder from 36 to 26 blocks. Decoding is about
@@ -130,6 +130,7 @@ Choose a model, write a prompt and press **Generate**. Each model starts with an
 written in the style its guide recommends; **Default prompts** brings it back.
 
 **Settings** holds shape, size, steps, prompt strength (CFG), seed and the number of images.
+Settings that don't apply to the current mode are grayed out.
 
 MOSS-Image has three modes:
 
@@ -147,14 +148,14 @@ MOSS-Image has three modes:
   time; details can come out a little softer.
 - Sigma shift, layer skip guidance, sampler and scheduler.
 
-Settings that don't apply to the current mode are grayed out.
-
 ## Making videos
 
 Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 MP, its native size.
 
-- **Start image:** pick one from your device or the gallery, and the video starts from that
-  picture. You can also press **Animate** in the viewer on any image.
+- **Images:** add them from your device or the gallery, then tap one to set it as the start, end
+  or a partway frame. In the viewer, **Animate** starts from an image; **Extend** continues a video.
+- **References** (MiniMax H3 references pack): pictures, videos and voices the video follows. Name
+  them in the prompt by their captions, like `<Picture 1>`. Turbo runs them in 4 steps.
 - **Prompt:** H3 reads three fields: the shots, the ambient sound and the background music. Each
   shot can have camera moves, a cut time (`At 00:01.500`) and spoken lines in `<d>` tags. The
   example prompts show the format.
@@ -175,7 +176,7 @@ The gallery shows every image and video in ComfyUI's output folder, newest first
 - **Info** shows the prompt, the enhanced prompt, the model, the settings, how long the file took
   to generate and the file encoding. When a job finishes, Create also shows how long it took.
 - **Reuse settings** loads that file's prompt and settings into Create.
-- **Animate** uses the image as a video's start image.
+- **Animate** starts a video from the image; **Extend** continues a video, sound included.
 - **Save** (videos) downloads the file. On iPhone or iPad, open the video in Files and use
   Share › Save Video to add it to Photos. Images save the browser's usual way, with a long press or
   right-click.

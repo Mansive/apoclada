@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=111">
+<link rel="stylesheet" href="/studio/assets/style.css?v=112">
 </head>
 <body>
 <header class="topbar">
@@ -49,17 +49,9 @@
       <button type="button" id="reset-prompts" class="ghost wide">Default prompts</button>
 
       <div class="field vid-only">
-        <span class="label">Start image <span class="hint">optional</span></span>
-        <div class="start-image">
-          <img id="start-thumb" alt="Start image" hidden>
-          <label class="ghost pick">
-            <input id="start-file" type="file" accept="image/*" hidden>
-            <span>From device…</span>
-          </label>
-          <button type="button" id="start-gallery" class="ghost">From gallery…</button>
-          <button type="button" id="start-clear" class="ghost danger" hidden>Remove</button>
-        </div>
-        <span class="note">The video starts from this picture and keeps its shape. Describe how it moves.</span>
+        <span class="label"><span id="media-label">Images</span> <span class="hint">optional</span></span>
+        <div id="media" class="media"></div>
+        <span id="media-note" class="note"></span>
       </div>
 
       <details id="settings" class="settings">
@@ -88,10 +80,10 @@
       <div class="field vid-only">
         <span class="label">Length <output id="length-out" class="value"></output></span>
         <input id="length" type="range" min="2" max="15" step="1">
-        <span class="note">2 to 15 seconds. Longer videos take longer to make.</span>
+        <span id="length-note" class="note"></span>
       </div>
 
-      <div class="field vid-only">
+      <div id="vsize-field" class="field vid-only">
         <span class="label">Size <output id="vsize-out" class="value"></output></span>
         <input id="video-mp" type="range" min="0" step="1" aria-label="Video size">
         <span class="note">0.98 MP is H3's native size. Smaller sizes are faster but less detailed.</span>
@@ -258,14 +250,43 @@
 
 <dialog id="picker" class="picker">
   <div class="picker-head">
-    <h2>Choose a start image</h2>
+    <h2>Add to the video</h2>
     <button type="button" id="picker-close" class="ghost icon" aria-label="Close"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="picker-actions">
+    <label class="ghost pick">
+      <input id="media-file" type="file" accept="image/*" hidden>
+      <span>From device…</span>
+    </label>
   </div>
   <div id="picker-grid" class="grid"></div>
 </dialog>
 
+<dialog id="item" class="picker item">
+  <div class="picker-head">
+    <h2 id="item-title"></h2>
+    <button type="button" id="item-close" class="ghost icon" aria-label="Close"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="item-body">
+    <img id="item-img" alt="">
+    <audio id="item-audio" controls hidden></audio>
+    <div id="item-role" class="segmented four" role="radiogroup" aria-label="Use as">
+      <button type="button" role="radio" data-role="start">Start</button>
+      <button type="button" role="radio" data-role="at">Partway</button>
+      <button type="button" role="radio" data-role="end">End</button>
+      <button type="button" role="radio" data-role="ref">Reference</button>
+    </div>
+    <div id="item-at-field" class="field">
+      <span class="label">At <output id="item-at-out" class="value"></output></span>
+      <input id="item-at" type="range" min="0.5" step="0.5" aria-label="Time in the video">
+    </div>
+    <span id="item-note" class="note"></span>
+    <button type="button" id="item-remove" class="ghost danger">Remove</button>
+  </div>
+</dialog>
+
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=111"></script>
+<script src="/studio/assets/app.js?v=112"></script>
 </body>
 </html>

@@ -75,6 +75,8 @@ FILES = {
     "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1956193000),
     # Kijai/MiniMax-H3-experimental: ZhengmingYu's DMAD 4-step distillation LoRA, rank-reduced.
     "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors": ("loras", f"{HF}/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 366647000),
+    "minimax_h3_ref2va_pruned_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", 20970379616),
+    "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors", 1956193000),
 }
 MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_w4a8_gptq.safetensors", "vae": "flux2-vae_small.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
@@ -91,6 +93,12 @@ H3 = {
     "lora": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
     "fast_lora": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
 }
+# The reference-to-video model and its 4-step LoRA, from ComfyUI's H3 reference templates. It runs
+# the videos with reference images, videos or voices; the rest still run on the model above.
+H3_REF = {
+    "ref_unet": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "ref_lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+}
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
 PACKS = [
@@ -98,7 +106,8 @@ PACKS = [
      "files": [*MOSS.values(), TURBO_LORA, *RAPID_FILES]},
     {"id": "krea2", "name": "Kroma", "about": "Images from lodestones' Krea 2 fine-tune, in 8 steps.", "files": list(KREA2.values()),
      "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
-    {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt or a start image.", "files": list(H3.values())},
+    {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt, start and end images, or images partway through.", "files": list(H3.values())},
+    {"id": "video_refs", "name": "MiniMax H3 references", "about": "Lets videos follow reference images, videos and voices. Needs the MiniMax H3 pack.", "files": list(H3_REF.values())},
 ]
 
 routes = PromptServer.instance.routes
@@ -413,10 +422,10 @@ async def studio_turbo(request):
     return web.json_response({"lora": TURBO_LORA if have(TURBO_LORA) else None, "rapid": RAPID_ADAPTER if rapid else None})
 
 
-# Video mode is offered only when every H3 file is present; the Turbo and Fast LoRAs are optional.
+# Video mode is offered only when every H3 file is present; the LoRAs and the reference model are optional.
 @routes.get("/studio/video")
 async def studio_video(request):
-    files = {key: name if have(name) else None for key, name in H3.items()}
+    files = {key: name if have(name) else None for key, name in {**H3, **H3_REF}.items()}
     if not all(files[k] for k in ("unet", "clip", "vae", "audio_vae")):
         return web.json_response(None)
     return web.json_response(files)
@@ -612,7 +621,9 @@ async def studio_image_info(request):
             stream = container.streams.video[0]
             width, height = stream.width, stream.height
             audio = container.streams.audio[0].codec_context if container.streams.audio else None
+            # Extend cuts the video by frame, so it needs the exact count.
             encoding = {"format": stream.codec_context.name, "encoder": container.metadata.get("video_encoder"),
+                        "frames": stream.frames, "fps": float(stream.average_rate),
                         "audio": audio and {"format": audio.name, "sample_rate": audio.sample_rate, "channels": audio.layout.nb_channels}}
         enhanced = None
     else:

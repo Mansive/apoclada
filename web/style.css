@@ -121,8 +121,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 }
 [data-kind="image"] .vid-only, [data-kind="video"] .img-only { display: none !important; }
 
-.start-image { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.start-image img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; background: var(--panel-2); }
+/* The video's images and references as a row of tiles, each captioned with its role. */
+.media { display: flex; gap: 10px; overflow-x: auto; }
+.media button { flex: none; width: 72px; display: grid; gap: 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; }
+.media img, .media .tile-icon { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); }
+.media .tile-icon { display: grid; place-items: center; font-size: 24px; color: var(--text); }
+.media .add .tile-icon { border-style: dashed; background: none; }
 .pick { display: inline-flex; align-items: center; cursor: pointer; }
 .wide { width: 100%; min-height: 44px; }
 
@@ -241,6 +245,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 }
 .picker h2 { margin: 0; font-size: 17px; }
 .picker .grid { padding: 16px; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.picker-actions { padding: 16px 16px 0; }
+.item { width: min(calc(100vw - 32px), 480px); }
+.item-body { padding: 16px; display: grid; gap: 14px; }
+.item-body img { width: 100%; max-height: 40dvh; object-fit: contain; border-radius: 10px; background: var(--panel-2); }
+.item-body audio { width: 100%; }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;

@@ -30,14 +30,39 @@ const ANIMATE_PROMPT = `integrated_multimodal_description: [Shot 1] The scene sh
 overall_soundscape: Soft ambient sound that fits the setting, with faint fabric rustling as the character moves.
 
 non_diegetic_music: A slow lo-fi piano melody with soft brushed drums.`;
+// Reference videos follow MiniMax's full-reference guide (VIDEO_PROMPT_WRITING_GUIDE_ref_en.md): the
+// references get <Subject N> labels, a summary and a retention line, and the shots move to
+// detailed_description after a style sentence. The scene, shots, voice, line and music match VIDEO_PROMPT,
+// with <Subject 1> from <Picture 1> in place of the described character.
+const REFERENCE_PROMPT = `subject_definitions:
+<Subject 1> is the main character in <Picture 1>, with their face, hair and clothing.
+
+summary:
+[reference generation] The target video shows <Subject 1> sipping from a steaming mug by the window of a quiet café on a rainy evening, then a close-up as <Subject 1> lowers the mug and speaks.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - the character's face, hair and clothing are retained.
+
+detailed_description:
+The target video keeps the art style of <Picture 1>, with warm, soft lighting.
+[Shot 1] A medium close-up shot frames <Subject 1>, the only customer in a quiet corner café on a rainy evening, sitting by the rain-streaked window with a steaming mug in both hands. The camera pushes in with small amplitude at slow speed as <Subject 1> takes a slow sip from the mug and smiles.
+[Shot 2] At 00:01.500, the camera cuts to a close-up of <Subject 1>'s face lit by the warm café light as they lower the mug, smile, and with a soft, bright voice <Subject 1> (S1) says: <d>[Japanese] 美味しい</d>
+
+overall_soundscape:
+Rain patters steadily against the window glass, the ceramic mug clinks softly on the wooden table, and muffled traffic hums outside.
+
+non_diegetic_music:
+A slow lo-fi piano melody with soft brushed drums.`;
+// MiniMax's guide opens prompts with start or end images with a line saying where they fall in the video.
 const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
+const FRAMES_LINE = /^(For the target video|How the reference pictures align)[^\n]*\n\n/;
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
   randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "", enhance: false, easyCache: false,
   mode: "full", tuning: {}, kind: "image",
-  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, start: null },
+  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null },
 };
 // Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
 // scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
@@ -142,11 +167,14 @@ if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg art
 settings.video = { ...DEFAULTS.video, ...settings.video };
 // Video mode was a Turbo on/off switch before Fast was added.
 if ("turbo" in settings.video) { settings.video.mode = settings.video.turbo ? "turbo" : "quality"; delete settings.video.turbo; }
-// The video prompt started out empty; an empty one can't be generated, so it gets the example.
-settings.video.prompt ||= videoPrompt(settings.video.start);
 if (settings.video.mp === 1) settings.video.mp = 0.98;
 // Start images moved from input/mobile to input/studio with the rename to Apoclada Studio.
 if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder = "studio";
+// The start image became one of the video's images.
+if (settings.video.start) settings.video.items = [{ kind: "image", role: "start", at: 2.5, ...settings.video.start }];
+delete settings.video.start;
+// The video prompt started out empty; an empty one can't be generated, so it gets the example.
+settings.video.prompt ||= videoPrompt(settings.video);
 // The 8-step mode was saved as "fast" before it was renamed to Turbo.
 for (const k of ["mode", "mossMode"]) if (settings[k] === "fast") settings[k] = "turbo";
 if (settings.tuning?.fast) { settings.tuning.turbo = settings.tuning.fast; delete settings.tuning.fast; }
@@ -184,12 +212,14 @@ function dimensions(aspect, mp) {
   return { width: round16(Math.sqrt(area * a / b)), height: round16(Math.sqrt(area * b / a)) };
 }
 
-// A start image keeps its own shape, since H3 stretches the first frame onto the canvas.
-// Rounding to the 32 px grid can push the area past H3's native 768×1344 cap, so the target area
-// shrinks until the rounded size fits; the shape is kept.
+// A start image keeps its own shape, since H3 stretches the first frame onto the canvas, and an
+// extended video keeps its size. Rounding to the 32 px grid can push the area past H3's native
+// 768×1344 cap, so the target area shrinks until the rounded size fits; the shape is kept.
 function round32(n) { return Math.max(32, Math.round(n / 32) * 32); }
 function videoDimensions(v) {
-  const [a, b] = v.start ? [v.start.width, v.start.height] : (ASPECTS.find((x) => x[0] === v.aspect) || ASPECTS[5]).slice(1);
+  if (v.extend) return { width: v.extend.width, height: v.extend.height };
+  const start = v.items.find((i) => i.role === "start");
+  const [a, b] = start ? [start.width, start.height] : (ASPECTS.find((x) => x[0] === v.aspect) || ASPECTS[5]).slice(1);
   for (let area = v.mp * 1024 * 1024; ; area *= 0.99) {
     const width = round32(Math.sqrt(area * a / b)), height = round32(Math.sqrt(area * b / a));
     if (width * height <= 768 * 1344) return { width, height };
@@ -290,7 +320,8 @@ function syncForm() {
   $("negative").value = settings.negative;
   if (settings.negative) $("negative").closest("details").open = true;
   for (const b of $("aspects").children) b.setAttribute("aria-checked", b.dataset.aspect === (video ? v.aspect : settings.aspect));
-  setUnused($("shape-field"), video && Boolean(v.start), "The video takes the start image's shape");
+  setUnused($("shape-field"), video && Boolean(v.extend || v.items.some((i) => i.role === "start")),
+    v.extend ? "The video keeps the shape of the one it continues" : "The video takes the start image's shape");
   syncVideoForm();
   $("megapixels").value = MEGAPIXELS.indexOf(settings.mp);
   const { width, height } = dimensions(settings.aspect, settings.mp);
@@ -321,8 +352,7 @@ function syncForm() {
     ? [
         { turbo: "Turbo", fast: "Fast" }[videoMode(v)] ?? `Quality ${v.steps} steps`,
         `${vsize.width}×${vsize.height}`,
-        `${v.seconds} s`,
-        v.start ? "from image" : "",
+        `${v.extend ? "+" : ""}${v.seconds} s`,
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
       ]
     : [
@@ -365,25 +395,174 @@ function setUnused(field, unused, reason) {
 function syncVideoForm() {
   const v = settings.video;
   const mode = videoMode(v);
-  $("video-mode").querySelector("[data-mode=turbo]").disabled = !videoFiles?.lora;
-  $("video-mode").querySelector("[data-mode=fast]").disabled = !videoFiles?.fast_lora;
+  const refs = usesRefs(v);
+  $("video-mode").querySelector("[data-mode=turbo]").disabled = !(refs ? videoFiles?.ref_lora : videoFiles?.lora);
+  $("video-mode").querySelector("[data-mode=turbo] small").textContent = `${refs ? REF_LORA_STEPS : VIDEO_LORA_STEPS.turbo} steps`;
+  $("video-mode").querySelector("[data-mode=fast]").disabled = refs || !videoFiles?.fast_lora;
   for (const b of $("video-mode").children) b.setAttribute("aria-checked", b.dataset.mode === mode);
   $("video-mode").querySelector("[data-mode=quality] small").textContent = `${v.steps} steps`;
-  setUnused($("vsteps-field"), mode !== "quality", `${mode === "fast" ? "Fast" : "Turbo"} always uses ${VIDEO_LORA_STEPS[mode]} steps`);
+  setUnused($("vsteps-field"), mode !== "quality", `${mode === "fast" ? "Fast" : "Turbo"} always uses ${videoSteps(v, mode)} steps`);
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);
   const { width, height } = videoDimensions(v);
-  $("vsize-out").textContent = `${v.mp} MP · ${width} × ${height}`;
+  $("vsize-out").textContent = v.extend ? `${width} × ${height}` : `${v.mp} MP · ${width} × ${height}`;
+  setUnused($("vsize-field"), Boolean(v.extend), "The video keeps the size of the one it continues");
   $("length").value = v.seconds;
-  $("length-out").textContent = `${v.seconds} s`;
-  $("start-thumb").hidden = !v.start;
-  if (v.start) $("start-thumb").src = startUrl(v.start);
-  $("start-clear").hidden = !v.start;
+  $("length-out").textContent = `${v.extend ? "+" : ""}${v.seconds} s`;
+  $("length-note").textContent = v.extend ? "How much to add, 2 to 15 seconds." : "2 to 15 seconds. Longer videos take longer to make.";
+  renderMedia();
 }
 
-function startUrl(start) {
-  return `/view?${new URLSearchParams({ filename: start.name, subfolder: start.subfolder, type: "input" })}`;
+/* ---------- video images and references ---------- */
+
+// Each item is an image (role start, at, end or ref), a gallery video or a voice (always ref).
+// v.extend is the gallery video being continued.
+function usesRefs(v) { return v.items.some((i) => i.role === "ref"); }
+
+function mediaPath(item) { return item.subfolder ? `${item.subfolder}/${item.name}` : item.name; }
+
+function mediaUrl(item) {
+  return item.kind === "video"
+    ? thumbUrl({ filename: item.name, subfolder: item.subfolder, mtime: "" })
+    : `/view?${new URLSearchParams({ filename: item.name, subfolder: item.subfolder, type: "input" })}`;
+}
+
+// The reference model names its pictures first, then each video with its sound as the next <Audio N>,
+// then the voices; the prompt uses these names.
+function referenceTags(v) {
+  const tags = new Map();
+  const count = { image: 0, video: 0, audio: 0 };
+  for (const kind of ["image", "video", "audio"]) {
+    for (const item of v.items.filter((i) => i.kind === kind && i.role === "ref")) {
+      if (kind === "video") tags.set(item, [`Video ${++count.video}`, `Audio ${++count.audio}`]);
+      else tags.set(item, [`${kind === "image" ? "Picture" : "Audio"} ${++count[kind]}`]);
+    }
+  }
+  return tags;
+}
+
+function middle(v) { return Math.round(v.seconds) / 2; }
+
+let mediaKey = null;
+function renderMedia() {
+  const v = settings.video;
+  const refPack = Boolean(videoFiles?.ref_unet);
+  $("media-label").textContent = refPack ? "Images and references" : "Images";
+  const empty = !v.extend && !v.items.length;
+  $("media-note").textContent = empty
+    ? `Add a start or end image, images partway through${refPack ? ", or pictures, videos and voices for the video to follow" : ""}.`
+    : `Tap one to change how it's used.${usesRefs(v) ? " Name references in the prompt as captioned, like <Picture 1>." : ""}`;
+  // Rebuilding the tiles reloads their pictures, so it happens only when they change.
+  const key = JSON.stringify([v.extend, v.items]);
+  if (key === mediaKey) return;
+  mediaKey = key;
+  const tags = referenceTags(v);
+  const tile = (item, caption) => el("button", { type: "button", onclick: () => openItem(item) },
+    item.kind === "audio" ? el("span", { className: "tile-icon", textContent: "♪" }) : el("img", { src: mediaUrl(item), alt: "" }),
+    el("span", { textContent: caption }));
+  $("media").replaceChildren(
+    v.extend && tile(v.extend, "Continues"),
+    ...v.items.map((i) => tile(i, i.role === "ref" ? tags.get(i)[0] : i.role === "at" ? `At ${i.at} s` : i.role === "start" ? "Start" : "End")),
+    el("button", { type: "button", className: "add", onclick: pickMedia }, el("span", { className: "tile-icon", textContent: "+" }), el("span", { textContent: "Add" })));
+}
+
+// An untouched example prompt switches to the one that fits the video's new images.
+function editVideo(change) {
+  const v = settings.video;
+  const untouched = v.prompt === videoPrompt(v);
+  change(v);
+  if (untouched) v.prompt = videoPrompt(v);
+  syncForm();
+}
+
+function videoPrompt(v) {
+  return usesRefs(v) ? REFERENCE_PROMPT : v.items.some((i) => i.role === "start") ? ANIMATE_PROMPT : VIDEO_PROMPT;
+}
+
+// A new image starts the video, else ends it, else lands halfway; videos and voices are references.
+function addMedia(item, role) {
+  const v = settings.video;
+  const free = (r) => !v.items.some((i) => i.role === r);
+  item.role = role ?? (item.kind !== "image" ? "ref" : !v.extend && free("start") ? "start" : free("end") ? "end" : "at");
+  if (item.kind === "image") item.at = middle(v);
+  editVideo((v) => {
+    v.items = [...v.items, item];
+    setRole(item, item.role);
+  });
+  return item;
+}
+
+// Only one image can start or end the video; the one there before moves partway.
+function setRole(item, role) {
+  if (role === "start" || role === "end") for (const i of settings.video.items) if (i.role === role) i.role = "at";
+  item.role = role;
+}
+
+function removeMedia(item) {
+  editVideo((v) => {
+    if (item === v.extend) v.extend = null;
+    else v.items = v.items.filter((i) => i !== item);
+  });
+}
+
+let shownItem = null;
+function openItem(item) {
+  shownItem = item;
+  syncItem();
+  $("item").showModal();
+}
+
+function syncItem() {
+  const item = shownItem;
+  const v = settings.video;
+  const extend = item === v.extend;
+  const tags = referenceTags(v).get(item);
+  $("item-title").textContent = extend ? "Continues this video" : { image: "Image", video: "Reference video", audio: "Reference voice" }[item.kind];
+  $("item-img").hidden = item.kind === "audio";
+  $("item-audio").hidden = item.kind !== "audio";
+  if (item.kind === "audio") $("item-audio").src = mediaUrl(item);
+  else $("item-img").src = mediaUrl(item);
+  $("item-role").hidden = item.kind !== "image" || extend;
+  const ref = $("item-role").querySelector("[data-role=ref]");
+  ref.hidden = !videoFiles?.ref_unet;
+  ref.disabled = item.role !== "ref" && v.items.filter((i) => i.kind === "image" && i.role === "ref").length >= 9;
+  $("item-role").className = ref.hidden ? "segmented" : "segmented four";
+  $("item-role").querySelector("[data-role=start]").disabled = Boolean(v.extend);
+  for (const b of $("item-role").children) b.setAttribute("aria-checked", b.dataset.role === item.role);
+  $("item-at-field").hidden = item.role !== "at";
+  $("item-at").max = Math.max(0.5, v.seconds - 0.5);
+  $("item-at").value = item.at;
+  $("item-at-out").textContent = `${item.at} s${v.extend ? " into the new part" : ""}`;
+  $("item-note").textContent = extend
+    ? "The new video picks up from the end of this one and is joined onto it. Describe what happens next."
+    : item.kind === "video" ? `Called <${tags[0]}> in the prompt, and its sound <${tags[1]}>. The video can follow its characters, motion or camera work.`
+    : item.kind === "audio" ? `Called <${tags[0]}> in the prompt. Use it as a voice, e.g. "<${tags[0]}> is the voice-timbre reference for <Subject 1> (S1)."`
+    : {
+        start: "The video starts on this image and keeps its shape.",
+        at: "The video passes through this image at the time set below.",
+        end: "The video ends on this image.",
+        ref: `Called <${tags?.[0]}> in the prompt. The video follows its character, place or style without showing it as a frame.`,
+      }[item.role];
+}
+
+// Images and voices go into ComfyUI's input folder (input/studio), where LoadImage and LoadAudio read them.
+async function addFile(file, role) {
+  const kind = file.type.startsWith("audio/") ? "audio" : "image";
+  if (kind === "audio" && settings.video.items.filter((i) => i.kind === "audio").length >= 3) { toast("A video can follow up to 3 voices"); return null; }
+  const form = new FormData();
+  form.append("image", file);
+  form.append("subfolder", "studio");
+  const res = await fetch("/upload/image", { method: "POST", body: form }).catch(() => null);
+  if (!res || !res.ok) { toast("Couldn't upload the file"); return null; }
+  const { name, subfolder } = await res.json();
+  const item = { kind, name, subfolder };
+  if (kind === "image") {
+    const size = await imageSize(mediaUrl(item)).catch(() => null);
+    if (!size) { toast("That image format isn't supported"); return null; }
+    Object.assign(item, size);
+  }
+  return addMedia(item, role);
 }
 
 function imageSize(url) {
@@ -393,32 +572,6 @@ function imageSize(url) {
     img.onerror = reject;
     img.src = url;
   });
-}
-
-// Start images go into ComfyUI's input folder (input/studio), where LoadImage reads them.
-async function setStartImage(file) {
-  const form = new FormData();
-  form.append("image", file);
-  form.append("subfolder", "studio");
-  const res = await fetch("/upload/image", { method: "POST", body: form }).catch(() => null);
-  if (!res || !res.ok) { toast("Couldn't upload the image"); return false; }
-  const { name, subfolder } = await res.json();
-  const size = await imageSize(startUrl({ name, subfolder })).catch(() => null);
-  if (!size) { toast("That image format isn't supported"); return false; }
-  setVideoStart({ name, subfolder, ...size });
-  syncForm();
-  return true;
-}
-
-function videoPrompt(start) {
-  return start ? ANIMATE_PROMPT : VIDEO_PROMPT;
-}
-
-// An untouched example prompt switches to the one for a video with or without a start image.
-function setVideoStart(start) {
-  const v = settings.video;
-  if (v.prompt === videoPrompt(v.start)) v.prompt = videoPrompt(start);
-  v.start = start;
 }
 
 // − and + beside each slider move it one step, which is hard to do by dragging on a touch screen.
@@ -446,12 +599,23 @@ function bindForm() {
   $("prompt").oninput = (e) => { (settings.kind === "video" ? settings.video : settings).prompt = e.target.value; save(SETTINGS_KEY, settings); };
   $("length").oninput = (e) => { settings.video.seconds = Number(e.target.value); syncForm(); };
   $("vsteps").oninput = (e) => { settings.video.steps = Number(e.target.value); syncForm(); };
-  $("start-file").onchange = (e) => { const file = e.target.files[0]; e.target.value = ""; if (file) setStartImage(file); };
-  $("start-clear").onclick = () => { setVideoStart(null); syncForm(); };
-  $("start-gallery").onclick = pickFromGallery;
-  $("picker-close").onclick = () => $("picker").close();
-  // A tap outside the panel lands on the dialog's backdrop, which counts as the dialog itself.
-  $("picker").onclick = (e) => { if (e.target === $("picker")) $("picker").close(); };
+  $("media-file").onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    $("picker").close();
+    const item = await addFile(file);
+    if (item?.kind === "image") openItem(item);
+  };
+  for (const b of $("item-role").children) b.onclick = () => { editVideo(() => setRole(shownItem, b.dataset.role)); syncItem(); };
+  $("item-at").oninput = (e) => { shownItem.at = Number(e.target.value); syncItem(); syncForm(); };
+  $("item-remove").onclick = () => { $("item").close(); removeMedia(shownItem); };
+  for (const id of ["picker", "item"]) {
+    $(`${id}-close`).onclick = () => $(id).close();
+    // A tap outside the panel lands on the dialog's backdrop, which counts as the dialog itself.
+    $(id).onclick = (e) => { if (e.target === $(id)) $(id).close(); };
+  }
+  $("item").onclose = () => $("item-audio").pause();
   $("negative").oninput = (e) => { settings.negative = e.target.value; save(SETTINGS_KEY, settings); };
   $("steps").oninput = (e) => { settings.steps = Number(e.target.value); syncForm(); };
   $("cfg").oninput = (e) => { settings.cfg = Number(e.target.value); syncForm(); };
@@ -469,7 +633,7 @@ function bindForm() {
   $("reset").onclick = () => {
     const { video, kind } = settings;
     if (kind === "video") {
-      settings.video = { ...DEFAULTS.video, prompt: video.prompt, start: video.start };
+      settings.video = { ...DEFAULTS.video, prompt: video.prompt, items: video.items, extend: video.extend };
       Object.assign(settings, { seed: DEFAULTS.seed, randomSeed: DEFAULTS.randomSeed });
     } else {
       settings = { ...DEFAULTS, ...MODES[settings.mode].tuning, prompt: settings.prompt, negative: settings.negative, model: settings.model, mode: settings.mode, tuning: {}, video, kind };
@@ -480,7 +644,7 @@ function bindForm() {
   $("reset-prompts").onclick = () => {
     const video = settings.kind === "video";
     if (!confirm(video ? "Replace your prompt with the default example prompt?" : "Replace your prompts with the default example prompt and negative prompt?")) return;
-    if (video) settings.video.prompt = videoPrompt(settings.video.start);
+    if (video) settings.video.prompt = videoPrompt(settings.video);
     else Object.assign(settings, { prompt: defaultPrompt(), negative: DEFAULTS.negative });
     syncForm();
   };
@@ -598,45 +762,117 @@ function buildKrea2Workflow(s, model, width, height) {
   };
 }
 
-// Turbo and Fast fall back to Quality when their LoRA isn't on the PC.
+// Turbo and Fast fall back to Quality when their LoRA isn't on the PC. The reference model has
+// its own Turbo LoRA, which ComfyUI's template runs at 4 steps, and no Fast one, so Fast runs as Turbo.
 const VIDEO_LORA_STEPS = { turbo: 8, fast: 4 };
+const REF_LORA_STEPS = 4;
 function videoMode(v) {
-  if (v.mode === "turbo" && videoFiles?.lora) return "turbo";
-  if (v.mode === "fast" && videoFiles?.fast_lora) return "fast";
+  const refs = usesRefs(v);
+  const mode = refs && v.mode === "fast" ? "turbo" : v.mode;
+  if (mode === "turbo" && (refs ? videoFiles?.ref_lora : videoFiles?.lora)) return "turbo";
+  if (mode === "fast" && videoFiles?.fast_lora) return "fast";
   return "quality";
 }
 
-// Mirrors ComfyUI's official MiniMax H3 text/image-to-video template: no CFG, res_multistep,
-// 8 steps with the turbo LoRA, or 20 by default without it. Fast swaps in the DMAD LoRA at 4 steps.
-// Node ids line up with NODE_STAGES.
+function videoSteps(v, mode) {
+  return mode === "quality" ? v.steps : usesRefs(v) ? REF_LORA_STEPS : VIDEO_LORA_STEPS[mode];
+}
+
+// The line that opens the prompt for a start image, an end image or both, from MiniMax's guide:
+// the end image belongs to the last shot and falls at the video's length.
+function framesLine(v, length) {
+  const start = v.items.some((i) => i.role === "start"), end = v.items.some((i) => i.role === "end");
+  const shot = Math.max(1, ...[...v.prompt.matchAll(/\[Shot (\d+)\]/g)].map((m) => Number(m[1])));
+  const at = (length / 24).toFixed(2);
+  if (start && end) return `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot ${shot}) aligns with the ${at}-second mark of the target video.`;
+  if (end) return `How the reference pictures align with the target video — <Picture 1> (from [Shot ${shot}]) aligns with the ${at}-second mark of the target video.`;
+  return start ? START_LINE : null;
+}
+
+// Mirrors ComfyUI's official MiniMax H3 templates: no CFG, res_multistep, 8 steps with the turbo LoRA,
+// or 20 by default without it. Fast swaps in the DMAD LoRA at 4 steps. Start and end images go to
+// Image to Video, which shows them to the text encoder; images partway are Add Guide nodes at their
+// frame. References switch to the reference model and its node, where every keyframe is an Add Guide.
+// Node ids line up with NODE_STAGES; the images, references and extended video are numbered from 50.
 function buildVideoWorkflow(s) {
   const v = s.video;
   const { width, height } = videoDimensions(v);
+  const refs = usesRefs(v);
   const mode = videoMode(v);
-  const lora = { turbo: videoFiles.lora, fast: videoFiles.fast_lora }[mode];
+  const lora = mode === "quality" ? null : refs ? videoFiles.ref_lora : { turbo: videoFiles.lora, fast: videoFiles.fast_lora }[mode];
   const model = [lora ? "20" : "1", 0];
-  return {
-    "1": { class_type: "UNETLoader", inputs: { unet_name: videoFiles.unet, weight_dtype: "default" } },
+  // Extending makes a new video that opens on the old one's last 22 frames, from a second before its end.
+  const length = videoLength(v.seconds + (v.extend ? 1 : 0));
+  const graph = {
+    "1": { class_type: "UNETLoader", inputs: { unet_name: refs ? videoFiles.ref_unet : videoFiles.unet, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: videoFiles.clip, type: "minimax", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: videoFiles.vae } },
     "19": { class_type: "VAELoader", inputs: { vae_name: videoFiles.audio_vae } },
     ...(lora && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: lora, strength_model: 1, model: ["1", 0] } } }),
-    ...(v.start && { "21": { class_type: "LoadImage", inputs: { image: `${v.start.subfolder}/${v.start.name}` } } }),
-    "4": {
+  };
+  let next = 50;
+  const add = (class_type, inputs) => { graph[next] = { class_type, inputs }; return String(next++); };
+  const image = (item) => [add("LoadImage", { image: mediaPath(item) }), 0];
+  const video = (item) => add("GetVideoComponents", { video: [add("LoadVideo", { file: `${mediaPath(item)} [output]` }), 0] });
+  const start = v.items.find((i) => i.role === "start"), end = v.items.find((i) => i.role === "end");
+  const guides = [];
+  let head = null;
+  if (v.extend) {
+    const source = video(v.extend);
+    const cut = v.extend.frames - 24;
+    guides.push({
+      image: [add("ImageFromBatch", { image: [source, 0], batch_index: cut, length: 22 }), 0],
+      audio: [add("TrimAudioDuration", { audio: [source, 1], start_index: cut / 24, duration: 22 / 24 }), 0],
+      frame_idx: 0,
+    });
+    // The old video up to where the new one starts, joined in front of it at the end.
+    head = { images: add("ImageFromBatch", { image: [source, 0], batch_index: 0, length: cut }), audio: add("TrimAudioDuration", { audio: [source, 1], start_index: 0, duration: cut / 24 }) };
+  }
+  const shared = { clip: ["2", 0], vae: ["3", 0], prompt: v.prompt, width, height, length };
+  if (refs) {
+    const inputs = { ...shared, audio_vae: ["19", 0], ref_image_size: "match" };
+    const kinds = { image: [], video: [], audio: [] };
+    for (const i of v.items) if (i.role === "ref") kinds[i.kind].push(i);
+    kinds.image.forEach((i, n) => { inputs[`ref_images.ref_image_${n}`] = image(i); });
+    kinds.video.forEach((i, n) => {
+      const clip = video(i);
+      inputs[`ref_videos.ref_video_${n}`] = [clip, 0];
+      inputs[`ref_video_audios.ref_video_audio_${n}`] = [clip, 1];
+    });
+    kinds.audio.forEach((i, n) => { inputs[`ref_audios.ref_audio_${n}`] = [add("LoadAudio", { audio: mediaPath(i) }), 0]; });
+    graph["4"] = { class_type: "MiniMaxH3ReferenceToVideo", inputs };
+    if (start) guides.push({ image: image(start), frame_idx: 0 });
+    if (end) guides.push({ image: image(end), frame_idx: -1 });
+  } else {
+    const line = !FRAMES_LINE.test(v.prompt) && framesLine(v, length);
+    graph["4"] = {
       class_type: "MiniMaxH3ImageToVideo",
-      inputs: { clip: ["2", 0], vae: ["3", 0], prompt: v.start && !v.prompt.includes("is fully referenced") ? `${START_LINE}\n\n${v.prompt}` : v.prompt, width, height, length: videoLength(v.seconds), ...(v.start && { first_frame: ["21", 0] }) },
-    },
+      inputs: { ...shared, prompt: line ? `${line}\n\n${v.prompt}` : v.prompt, ...(start && { first_frame: image(start) }), ...(end && { last_frame: image(end) }) },
+    };
+  }
+  for (const i of v.items.filter((i) => i.role === "at")) {
+    guides.push({ image: image(i), frame_idx: Math.min(Math.round((i.at + (v.extend ? 1 : 0)) * 24), length - 1) });
+  }
+  let positive = ["4", 0];
+  for (const g of guides) positive = [add("MiniMaxH3AddGuide", { positive, vae: ["3", 0], audio_vae: ["19", 0], latent: ["4", 1], ...g }), 0];
+  Object.assign(graph, {
     "7": { class_type: "RandomNoise", inputs: { noise_seed: s.seed } },
     "8": { class_type: "KSamplerSelect", inputs: { sampler_name: "res_multistep" } },
-    "9": { class_type: "BasicScheduler", inputs: { scheduler: "simple", steps: VIDEO_LORA_STEPS[mode] ?? v.steps, denoise: 1, model } },
-    "10": { class_type: "BasicGuider", inputs: { model, conditioning: ["4", 0] } },
+    "9": { class_type: "BasicScheduler", inputs: { scheduler: "simple", steps: videoSteps(v, mode), denoise: 1, model } },
+    "10": { class_type: "BasicGuider", inputs: { model, conditioning: positive } },
     "16": { class_type: "SamplerCustomAdvanced", inputs: { noise: ["7", 0], guider: ["10", 0], sampler: ["8", 0], sigmas: ["9", 0], latent_image: ["4", 1] } },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "22": { class_type: "VAEDecodeAudio", inputs: { samples: ["16", 0], vae: ["19", 0] } },
-    "23": { class_type: "CreateVideo", inputs: { images: ["17", 0], audio: ["22", 0], fps: 24 } },
+    "23": {
+      class_type: "CreateVideo",
+      inputs: head
+        ? { images: [add("BatchImagesNode", { "images.image0": [head.images, 0], "images.image1": ["17", 0] }), 0], audio: [add("AudioConcat", { audio1: [head.audio, 0], audio2: ["22", 0], direction: "after" }), 0], fps: 24 }
+        : { images: ["17", 0], audio: ["22", 0], fps: 24 },
+    },
     // Codec and encoder come from Setup.
     "18": { class_type: "ApocladaSaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", codec: prefs.video_codec, encoder: prefs.video_encoder ?? "software" } },
-  };
+  });
+  return graph;
 }
 
 async function generate() {
@@ -644,6 +880,7 @@ async function generate() {
   if (!(video ? settings.video.prompt : settings.prompt).trim()) { toast("Write a prompt first"); $("prompt").focus(); return; }
   if (!video && !models.length) { toast("No image model yet. Download one in Setup."); return; }
   if (video && !videoFiles) { toast("The MiniMax H3 files are missing. Download them in Setup."); return; }
+  if (video && usesRefs(settings.video) && !videoFiles.ref_unet) { toast("References need the MiniMax H3 references pack. Download it in Setup."); return; }
   if (settings.randomSeed) settings.seed = Math.floor(Math.random() * 2 ** 48);
   syncForm();
   prefs = await fetch("/studio/prefs").then((r) => r.json()).catch(() => prefs);
@@ -961,7 +1198,8 @@ function showViewerImage() {
   $("v-save").hidden = !video;
   $("v-save").href = imageUrl(item);
   $("v-save").download = item.filename;
-  $("v-animate").hidden = video || !videoFiles;
+  $("v-animate").hidden = !videoFiles;
+  $("v-animate").textContent = video ? "Extend" : "Animate";
   $("v-hint").hidden = !video;
   $("v-pos").textContent = list.length > 1 ? `${viewer.index + 1} / ${list.length}` : "";
   $("v-prev").disabled = viewer.index === 0;
@@ -1039,15 +1277,24 @@ function infoRows(info) {
   const linked = (link) => (Array.isArray(link) ? graph[link[0]] : null);
   const turbo = find("LoraLoaderModelOnly") ? " · Turbo" : find("RapidMOSSAdapter") ? " · Rapid" : "";
   const size = `${info.width} × ${info.height}`;
-  const h3 = find("MiniMaxH3ImageToVideo");
+  const refs = find("MiniMaxH3ReferenceToVideo");
+  const h3 = find("MiniMaxH3ImageToVideo") ?? refs;
   if (h3) {
     const fast = find("LoraLoaderModelOnly")?.lora_name === videoFiles?.fast_lora;
+    const { items, extend } = videoMedia(graph, h3);
+    const tags = referenceTags({ items });
+    const role = (r) => items.filter((i) => i.role === r);
+    const e = info.encoding;
     return [
-      ["Prompt", h3.prompt.replace(`${START_LINE}\n\n`, "")],
-      ["Model", `MiniMax H3${fast ? " · Fast" : turbo}`],
-      ["Start image", linked(h3.first_frame)?.inputs.image],
+      ["Prompt", h3.prompt.replace(FRAMES_LINE, "")],
+      ["Model", `MiniMax H3${refs ? " references" : ""}${fast ? " · Fast" : turbo}`],
+      ["Continues", extend && mediaPath(extend)],
+      ["Start image", role("start").map(mediaPath).join()],
+      ["Images partway", role("at").map((i) => `${mediaPath(i)} at ${i.at} s`).join("\n")],
+      ["End image", role("end").map(mediaPath).join()],
+      ["References", role("ref").map((i) => `${tags.get(i)[0]}: ${mediaPath(i)}`).join("\n")],
       ["Size", size],
-      ["Length", `${Math.round(h3.length / 24)} s`],
+      ["Length", `${Math.round((e?.frames || h3.length) / (e?.fps || 24))} s`],
       ["Steps", find("BasicScheduler")?.steps],
       ["Seed", find("RandomNoise")?.noise_seed],
     ];
@@ -1103,7 +1350,7 @@ async function reuseCurrent() {
   const img = viewer.list[viewer.index];
   const info = await imageInfo(img);
   const graph = info?.prompt;
-  const h3 = graph && Object.values(graph).find((n) => n.class_type === "MiniMaxH3ImageToVideo");
+  const h3 = graph && Object.values(graph).find((n) => n.class_type === "MiniMaxH3ImageToVideo" || n.class_type === "MiniMaxH3ReferenceToVideo");
   if (h3) { reuseVideo(graph, h3.inputs); return; }
   const s = graph && samplerInputs(graph);
   if (!s) { toast("This image has no saved settings"); return; }
@@ -1159,28 +1406,55 @@ async function reuseCurrent() {
   toast("Settings loaded with the same seed. Turn on “Randomize” for variations.");
 }
 
+// Reads a video's images, references and extended video back from its workflow, in the form
+// settings.video keeps them. Images take the video's shape, as a start image would have given it.
+function videoMedia(graph, h3) {
+  const node = (link) => graph[link[0]];
+  const guides = Object.values(graph).filter((n) => n.class_type === "MiniMaxH3AddGuide").map((n) => n.inputs);
+  const source = guides.map((g) => node(g.image)).find((n) => n.class_type === "ImageFromBatch");
+  const offset = source ? 1 : 0;
+  const item = (link, role, frame) => {
+    let loader = node(link);
+    if (loader.class_type === "GetVideoComponents") loader = node(loader.inputs.video);
+    const path = (loader.inputs.image ?? loader.inputs.audio ?? loader.inputs.file).replace(/ \[output\]$/, "");
+    const cut = path.lastIndexOf("/");
+    const subfolder = path.slice(0, Math.max(cut, 0));
+    return {
+      kind: { LoadImage: "image", LoadAudio: "audio", LoadVideo: "video" }[loader.class_type], role,
+      at: frame > 0 ? Math.round((frame / 24 - offset) * 2) / 2 : Math.round(h3.length / 24 - offset) / 2,
+      name: path.slice(cut + 1), subfolder: subfolder === "mobile" ? "studio" : subfolder, width: h3.width, height: h3.height,
+    };
+  };
+  const items = [];
+  if (h3.first_frame) items.push(item(h3.first_frame, "start"));
+  if (h3.last_frame) items.push(item(h3.last_frame, "end"));
+  for (const g of guides) {
+    if (node(g.image).class_type === "LoadImage") items.push(item(g.image, g.frame_idx === 0 ? "start" : g.frame_idx === -1 ? "end" : "at", g.frame_idx));
+  }
+  for (const [key, link] of Object.entries(h3)) if (/^ref_(images|videos|audios)\./.test(key)) items.push(item(link, "ref"));
+  if (!source) return { items, extend: null };
+  const { kind, name, subfolder, width, height } = item(source.inputs.image);
+  return { items, extend: { kind, name, subfolder, width, height, frames: source.inputs.batch_index + 24 } };
+}
+
 function reuseVideo(graph, h3) {
   if (!videoFiles) { toast("The MiniMax H3 files are missing on the PC"); return; }
+  const { items, extend } = videoMedia(graph, h3);
+  if (items.some((i) => i.role === "ref") && !videoFiles.ref_unet) { toast("This video used references, which need the MiniMax H3 references pack"); return; }
   const v = settings.video;
   const nodes = Object.values(graph);
-  v.prompt = h3.prompt.replace(`${START_LINE}\n\n`, "");
-  v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24)));
+  v.prompt = h3.prompt.replace(FRAMES_LINE, "");
+  v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24) - (extend ? 1 : 0)));
   const lora = nodes.find((n) => n.class_type === "LoraLoaderModelOnly")?.inputs.lora_name;
   v.mode = !lora ? "quality" : lora === videoFiles.fast_lora ? "fast" : "turbo";
   const scheduler = nodes.find((n) => n.class_type === "BasicScheduler");
   if (!lora && scheduler) v.steps = scheduler.inputs.steps;
   const mp = (h3.width * h3.height) / (1024 * 1024);
   v.mp = VIDEO_MP.reduce((best, m) => (Math.abs(m - mp) < Math.abs(best - mp) ? m : best));
-  const start = Array.isArray(h3.first_frame) ? graph[h3.first_frame[0]]?.inputs.image : null;
-  if (start) {
-    const cut = start.lastIndexOf("/");
-    const subfolder = start.slice(0, Math.max(cut, 0));
-    v.start = { subfolder: subfolder === "mobile" ? "studio" : subfolder, name: start.slice(cut + 1), width: h3.width, height: h3.height };
-  } else {
-    const ratio = Math.log(h3.width / h3.height);
-    v.start = null;
-    v.aspect = ASPECTS.reduce((best, a) => (Math.abs(Math.log(a[1] / a[2]) - ratio) < Math.abs(Math.log(best[1] / best[2]) - ratio) ? a : best))[0];
-  }
+  v.items = items;
+  v.extend = extend;
+  const ratio = Math.log(h3.width / h3.height);
+  v.aspect = ASPECTS.reduce((best, a) => (Math.abs(Math.log(a[1] / a[2]) - ratio) < Math.abs(Math.log(best[1] / best[2]) - ratio) ? a : best))[0];
   const noise = nodes.find((n) => n.class_type === "RandomNoise");
   if (noise) settings.seed = noise.inputs.noise_seed;
   settings.randomSeed = false;
@@ -1191,46 +1465,61 @@ function reuseVideo(graph, h3) {
   toast("Settings loaded with the same seed. Turn on “Randomize” for variations.");
 }
 
-// Uploads a gallery image as the video's start frame. JPEG XL goes as the PC's PNG copy so the start
-// image loads in any browser and in LoadImage.
-async function startFromGallery(img) {
+// Uploads a gallery image to the video's images. JPEG XL goes as the PC's PNG copy so the image
+// loads in any browser and in LoadImage.
+async function addFromGallery(img, role) {
   const blob = await fetch(isJxl(img) ? pngUrl(img) : imageUrl(img)).then((r) => r.blob()).catch(() => null);
   const name = img.filename.replace(/\.jxl$/i, ".png");
-  return Boolean(blob) && setStartImage(new File([blob], name, { type: blob.type }));
+  return blob && addFile(new File([blob], name, { type: blob.type }), role);
 }
 
-async function pickFromGallery() {
-  const images = (await fetch("/studio/images").then((r) => r.json()).catch(() => [])).filter((img) => !isVideo(img));
-  if (!images.length) {
-    const p = document.createElement("p");
-    p.className = "empty";
-    p.textContent = "No images in the gallery yet.";
-    $("picker-grid").replaceChildren(p);
-  } else {
-    $("picker-grid").replaceChildren(...images.map((img) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      const el = document.createElement("img");
-      el.loading = "lazy";
-      el.src = thumbUrl(img);
-      el.alt = img.filename;
-      btn.append(el);
-      btn.onclick = () => { $("picker").close(); startFromGallery(img); };
-      return btn;
-    }));
-  }
+// Gallery videos are offered as references only while the reference model is on the PC and the
+// video has room for another; they're read straight from the output folder.
+async function pickMedia() {
+  const v = settings.video;
+  const refPack = Boolean(videoFiles?.ref_unet);
+  const videos = refPack && v.items.filter((i) => i.kind === "video").length < 3;
+  $("media-file").accept = refPack ? "image/*,audio/*" : "image/*";
+  const list = (await fetch("/studio/images").then((r) => r.json()).catch(() => [])).filter((img) => videos || !isVideo(img));
+  $("picker-grid").replaceChildren(...(list.length ? list.map((img) => el("button", {
+    type: "button", className: isVideo(img) ? "video" : "",
+    onclick: async () => {
+      $("picker").close();
+      const item = isVideo(img) ? addMedia({ kind: "video", name: img.filename, subfolder: img.subfolder || "" }) : await addFromGallery(img);
+      if (item?.kind === "image") openItem(item);
+    },
+  }, el("img", { loading: "lazy", src: thumbUrl(img), alt: img.filename }))) : [el("p", { className: "empty", textContent: "Nothing in the gallery yet." })]));
   $("picker").showModal();
   $("picker").scrollTop = 0;
 }
 
 // Sends the viewer's image to Video mode as the start frame.
 async function animateCurrent() {
-  if (!(await startFromGallery(viewer.list[viewer.index]))) return;
+  if (!(await addFromGallery(viewer.list[viewer.index], "start"))) return;
   settings.kind = "video";
   syncForm();
   closeViewer();
   selectTab("create");
   toast("Image set as the video's start frame. Describe the motion and press Generate.");
+}
+
+// Sends the viewer's video to Video mode to be continued. The new part replaces the old video's last
+// second, so it needs at least two seconds at H3's 24 fps.
+async function extendCurrent() {
+  const item = viewer.list[viewer.index];
+  const info = await imageInfo(item);
+  const e = info?.encoding;
+  if (e?.fps !== 24 || !(e.frames >= 48)) { toast("Only 24 fps videos of 2 seconds or more can be extended"); return; }
+  editVideo((v) => {
+    v.extend = { kind: "video", name: item.filename, subfolder: item.subfolder || "", width: info.width, height: info.height, frames: e.frames };
+    // The video it continues is where it starts.
+    v.items = v.items.filter((i) => i.role !== "start");
+  });
+  settings.kind = "video";
+  syncForm();
+  closeViewer();
+  selectTab("create");
+  toast("Describe what happens next and press Generate.");
 }
 
 function bindViewer() {
@@ -1239,7 +1528,7 @@ function bindViewer() {
   $("v-next").onclick = () => step(1);
   $("v-delete").onclick = deleteCurrent;
   $("v-reuse").onclick = reuseCurrent;
-  $("v-animate").onclick = animateCurrent;
+  $("v-animate").onclick = () => (isVideo(viewer.list[viewer.index]) ? extendCurrent() : animateCurrent());
   $("v-reveal").onclick = revealCurrent;
   $("v-info").onclick = () => ($("v-info-panel").hidden ? showInfo() : ($("v-info-panel").hidden = true));
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
