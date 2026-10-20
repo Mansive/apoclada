@@ -167,6 +167,8 @@ let running = null;
 let stopping = null;
 let progressStart = 0;
 let gallery = [];
+// What Create shows, newest first, so the viewer steps across every job's results.
+let results = [];
 let viewer = { list: [], index: 0 };
 let previewUrl = null;
 // latent_preview.preview_to_image reads a non_blocking GPU->CPU copy without syncing, so on
@@ -756,6 +758,7 @@ function showResults(images, version) {
   const box = $("results");
   box.querySelector(".empty")?.remove();
   const list = images.map((i) => ({ filename: i.filename, subfolder: i.subfolder, version }));
+  results = [...list, ...results].slice(0, 12);
   for (const img of [...list].reverse()) {
     let el;
     // Videos loop silently here as a preview; a tap opens the viewer, like images, for sound, controls
@@ -775,7 +778,7 @@ function showResults(images, version) {
       el.alt = settings.prompt;
       showImage(el, img);
     }
-    el.onclick = () => openViewer(list, list.indexOf(img));
+    el.onclick = () => openViewer(results, results.indexOf(img));
     el.dataset.key = imageKey(img);
     box.prepend(el);
   }
@@ -979,6 +982,7 @@ async function deleteCurrent() {
   for (const el of $("results").querySelectorAll("[data-key]")) if (el.dataset.key === imageKey(img)) el.remove();
   viewer.list.splice(viewer.index, 1);
   if (viewer.list !== gallery) gallery = gallery.filter((g) => !(g.filename === img.filename && g.subfolder === img.subfolder));
+  if (viewer.list !== results) results = results.filter((r) => imageKey(r) !== imageKey(img));
   if (!$("tab-gallery").hidden) loadGallery();
   toast("Deleted");
   showViewerImage();
