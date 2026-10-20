@@ -37,7 +37,7 @@ const DEFAULTS = {
   aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
   randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "", enhance: false, easyCache: false,
   mode: "full", tuning: {}, kind: "image",
-  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, turbo: true, steps: 20, start: null },
+  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, start: null },
 };
 // Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
 // scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
@@ -140,6 +140,8 @@ const clientId = `moss-${Math.random().toString(36).slice(2)}${Date.now().toStri
 let settings = { ...DEFAULTS, ...load(SETTINGS_KEY, null) };
 if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg artifact") settings.negative = DEFAULTS.negative;
 settings.video = { ...DEFAULTS.video, ...settings.video };
+// Video mode was a Turbo on/off switch before Fast was added.
+if ("turbo" in settings.video) { settings.video.mode = settings.video.turbo ? "turbo" : "quality"; delete settings.video.turbo; }
 // The video prompt started out empty; an empty one can't be generated, so it gets the example.
 settings.video.prompt ||= videoPrompt(settings.video.start);
 if (settings.video.mp === 1) settings.video.mp = 0.98;
@@ -236,7 +238,7 @@ function renderChoices() {
   }));
   sizeSlider($("video-mp"), VIDEO_MP, (mp) => { settings.video.mp = mp; });
   for (const b of $("mode").children) b.onclick = () => setMode(b.dataset.mode);
-  for (const b of $("video-mode").children) b.onclick = () => { settings.video.turbo = Boolean(b.dataset.turbo); syncForm(); };
+  for (const b of $("video-mode").children) b.onclick = () => { settings.video.mode = b.dataset.mode; syncForm(); };
   for (const b of $("kind").children) b.onclick = () => { settings.kind = b.dataset.kind; syncForm(); };
 }
 
@@ -315,7 +317,7 @@ function syncForm() {
   const vsize = videoDimensions(v);
   $("settings-summary").textContent = (video
     ? [
-        v.turbo && videoFiles?.lora ? "Turbo" : `Quality ${v.steps} steps`,
+        { turbo: "Turbo", fast: "Fast" }[videoMode(v)] ?? `Quality ${v.steps} steps`,
         `${vsize.width}×${vsize.height}`,
         `${v.seconds} s`,
         v.start ? "from image" : "",
@@ -360,12 +362,12 @@ function setUnused(field, unused, reason) {
 
 function syncVideoForm() {
   const v = settings.video;
-  const turbo = v.turbo && Boolean(videoFiles?.lora);
-  const turboBtn = $("video-mode").querySelector("[data-turbo='1']");
-  turboBtn.disabled = !videoFiles?.lora;
-  for (const b of $("video-mode").children) b.setAttribute("aria-checked", Boolean(b.dataset.turbo) === turbo);
-  $("video-mode").querySelector("[data-turbo=''] small").textContent = `${v.steps} steps`;
-  setUnused($("vsteps-field"), turbo, "Turbo always uses 8 steps");
+  const mode = videoMode(v);
+  $("video-mode").querySelector("[data-mode=turbo]").disabled = !videoFiles?.lora;
+  $("video-mode").querySelector("[data-mode=fast]").disabled = !videoFiles?.fast_lora;
+  for (const b of $("video-mode").children) b.setAttribute("aria-checked", b.dataset.mode === mode);
+  $("video-mode").querySelector("[data-mode=quality] small").textContent = `${v.steps} steps`;
+  setUnused($("vsteps-field"), mode !== "quality", `${mode === "fast" ? "Fast" : "Turbo"} always uses ${VIDEO_LORA_STEPS[mode]} steps`);
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);
@@ -594,19 +596,29 @@ function buildKrea2Workflow(s, model, width, height) {
   };
 }
 
+// Turbo and Fast fall back to Quality when their LoRA isn't on the PC.
+const VIDEO_LORA_STEPS = { turbo: 8, fast: 4 };
+function videoMode(v) {
+  if (v.mode === "turbo" && videoFiles?.lora) return "turbo";
+  if (v.mode === "fast" && videoFiles?.fast_lora) return "fast";
+  return "quality";
+}
+
 // Mirrors ComfyUI's official MiniMax H3 text/image-to-video template: no CFG, res_multistep,
-// 8 steps with the turbo LoRA, or 20 by default without it. Node ids line up with NODE_STAGES.
+// 8 steps with the turbo LoRA, or 20 by default without it. Fast swaps in the DMAD LoRA at 4 steps.
+// Node ids line up with NODE_STAGES.
 function buildVideoWorkflow(s) {
   const v = s.video;
   const { width, height } = videoDimensions(v);
-  const turbo = v.turbo && videoFiles.lora;
-  const model = [turbo ? "20" : "1", 0];
+  const mode = videoMode(v);
+  const lora = { turbo: videoFiles.lora, fast: videoFiles.fast_lora }[mode];
+  const model = [lora ? "20" : "1", 0];
   return {
     "1": { class_type: "UNETLoader", inputs: { unet_name: videoFiles.unet, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: videoFiles.clip, type: "minimax", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: videoFiles.vae } },
     "19": { class_type: "VAELoader", inputs: { vae_name: videoFiles.audio_vae } },
-    ...(turbo && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: videoFiles.lora, strength_model: 1, model: ["1", 0] } } }),
+    ...(lora && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: lora, strength_model: 1, model: ["1", 0] } } }),
     ...(v.start && { "21": { class_type: "LoadImage", inputs: { image: `${v.start.subfolder}/${v.start.name}` } } }),
     "4": {
       class_type: "MiniMaxH3ImageToVideo",
@@ -614,7 +626,7 @@ function buildVideoWorkflow(s) {
     },
     "7": { class_type: "RandomNoise", inputs: { noise_seed: s.seed } },
     "8": { class_type: "KSamplerSelect", inputs: { sampler_name: "res_multistep" } },
-    "9": { class_type: "BasicScheduler", inputs: { scheduler: "simple", steps: turbo ? 8 : v.steps, denoise: 1, model } },
+    "9": { class_type: "BasicScheduler", inputs: { scheduler: "simple", steps: VIDEO_LORA_STEPS[mode] ?? v.steps, denoise: 1, model } },
     "10": { class_type: "BasicGuider", inputs: { model, conditioning: ["4", 0] } },
     "16": { class_type: "SamplerCustomAdvanced", inputs: { noise: ["7", 0], guider: ["10", 0], sampler: ["8", 0], sigmas: ["9", 0], latent_image: ["4", 1] } },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
@@ -1019,9 +1031,10 @@ function infoRows(info) {
   const size = `${info.width} × ${info.height}`;
   const h3 = find("MiniMaxH3ImageToVideo");
   if (h3) {
+    const fast = find("LoraLoaderModelOnly")?.lora_name === videoFiles?.fast_lora;
     return [
       ["Prompt", h3.prompt.replace(`${START_LINE}\n\n`, "")],
-      ["Model", `MiniMax H3${turbo}`],
+      ["Model", `MiniMax H3${fast ? " · Fast" : turbo}`],
       ["Start image", linked(h3.first_frame)?.inputs.image],
       ["Size", size],
       ["Length", `${Math.round(h3.length / 24)} s`],
@@ -1136,9 +1149,10 @@ function reuseVideo(graph, h3) {
   const nodes = Object.values(graph);
   v.prompt = h3.prompt.replace(`${START_LINE}\n\n`, "");
   v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24)));
-  v.turbo = nodes.some((n) => n.class_type === "LoraLoaderModelOnly");
+  const lora = nodes.find((n) => n.class_type === "LoraLoaderModelOnly")?.inputs.lora_name;
+  v.mode = !lora ? "quality" : lora === videoFiles.fast_lora ? "fast" : "turbo";
   const scheduler = nodes.find((n) => n.class_type === "BasicScheduler");
-  if (!v.turbo && scheduler) v.steps = scheduler.inputs.steps;
+  if (!lora && scheduler) v.steps = scheduler.inputs.steps;
   const mp = (h3.width * h3.height) / (1024 * 1024);
   v.mp = VIDEO_MP.reduce((best, m) => (Math.abs(m - mp) < Math.abs(best - mp) ? m : best));
   const start = Array.isArray(h3.first_frame) ? graph[h3.first_frame[0]]?.inputs.image : null;

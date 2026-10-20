@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Apoclada Studio">
 <meta name="theme-color" content="oklch(0.17 0.01 285)">
 <title>Apoclada Studio</title>
-<link rel="stylesheet" href="/studio/assets/style.css?v=102">
+<link rel="stylesheet" href="/studio/assets/style.css?v=103">
 </head>
 <body>
 <header class="topbar">
@@ -71,10 +71,12 @@
 
       <div class="field vid-only">
         <span class="label">Mode</span>
-        <div id="video-mode" class="segmented two" role="radiogroup" aria-label="Video mode">
-          <button type="button" role="radio" data-turbo="">Quality<small>20 steps</small></button>
-          <button type="button" role="radio" data-turbo="1">Turbo<small>8 steps</small></button>
+        <div id="video-mode" class="segmented" role="radiogroup" aria-label="Video mode">
+          <button type="button" role="radio" data-mode="quality">Quality<small>20 steps</small></button>
+          <button type="button" role="radio" data-mode="turbo">Turbo<small>8 steps</small></button>
+          <button type="button" role="radio" data-mode="fast">Fast<small>4 steps</small></button>
         </div>
+        <span class="note">Fast takes about a quarter less time than Turbo but looks rougher. It suits simple animations.</span>
       </div>
 
       <div id="vsteps-field" class="field vid-only">
@@ -264,6 +266,6 @@
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/studio/assets/app.js?v=102"></script>
+<script src="/studio/assets/app.js?v=103"></script>
 </body>
 </html>

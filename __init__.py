@@ -66,9 +66,13 @@ FILES = {
     "qwen_image_vae.safetensors": ("vae", f"{HF}/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors", 253806246),
     "minimax_h3_fl2va_pruned_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", 20970379616),
     "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", 15687142551),
-    "minimax_h3_video_vae_int8_convrot.safetensors": ("vae", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot.safetensors", 2811065184),
+    # Kijai/MiniMax-H3-experimental: LynnReal's light video VAE (same encoder, decoder cut from 36 to 26
+    # blocks), int8. Decodes about 35% faster here with frames within 40 dB of Comfy-Org's VAE.
+    "minimax_h3_lynnreal_light_vae_int8_convrot.safetensors": ("vae", f"{HF}/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_lynnreal_light_vae_int8_convrot.safetensors", 2137493384),
     "minimax_h3_audio_vae_fp32.safetensors": ("vae", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors", 605254808),
     "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1956193000),
+    # Kijai/MiniMax-H3-experimental: ZhengmingYu's DMAD 4-step distillation LoRA, rank-reduced.
+    "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors": ("loras", f"{HF}/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 366647000),
 }
 MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "full_encoder_small_decoder.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
@@ -80,9 +84,10 @@ KREA2 = {"clip": "qwen3vl_4b_int8_convrot.safetensors", "vae": "qwen_image_vae.s
 H3 = {
     "unet": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     "clip": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    "vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+    "vae": "minimax_h3_lynnreal_light_vae_int8_convrot.safetensors",
     "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
     "lora": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "fast_lora": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
 }
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
@@ -377,7 +382,7 @@ async def studio_turbo(request):
     return web.json_response({"lora": TURBO_LORA if have(TURBO_LORA) else None, "rapid": RAPID_ADAPTER if rapid else None})
 
 
-# Video mode is offered only when every H3 file is present; the turbo LoRA is optional.
+# Video mode is offered only when every H3 file is present; the Turbo and Fast LoRAs are optional.
 @routes.get("/studio/video")
 async def studio_video(request):
     files = {key: name if have(name) else None for key, name in H3.items()}
