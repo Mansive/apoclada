@@ -56,8 +56,13 @@ A slow lo-fi piano melody with soft brushed drums.`;
 // MiniMax's guide opens prompts with start or end images with a line saying where they fall in the video.
 const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
 const FRAMES_LINE = /^(For the target video|How the reference pictures align)[^\n]*\n\n/;
-// Per-mode sampler settings. Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without
-// CFG, so layer skip guidance (which acts on the uncond pass) is off. Shift 5 tested best.
+// Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
+// scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
+const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked window of a corner café on a rainy evening, smiling softly as she holds a steaming mug in both hands. She wears a cream knit sweater, and her long teal twintails fall over her shoulders. A small chalkboard on the table reads \"Open late\" in white chalk. Warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. Soft anime illustration with clean lines and a muted, warm color palette, seen from the side at eye level in a medium shot. The mood is calm and cozy.";
+// Each image mode: its sampler settings and step range, the settings it grays out (by field, with the
+// reason), the file it needs and the node that marks it in a saved workflow, and its builder.
+// Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without CFG, so layer skip guidance
+// (which acts on the uncond pass) is off. Shift 5 tested best.
 // krea2 is used whenever a Krea 2 model is picked: lodestones recommend 8 to 12 steps, CFG 1 to 1.5
 // and Krea 2's own shift of 1.15 for Kroma, and Comfy's Krea 2 Turbo template uses 8 steps at CFG 1.
 const MOSS_NOTES = {
@@ -66,19 +71,36 @@ const MOSS_NOTES = {
 };
 const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
 const MODES = {
-  full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
-  turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
+  full: {
+    tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES,
+    unused: {}, build: buildMossWorkflow,
+  },
+  turbo: {
+    tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES,
+    label: "Turbo", unused: distilledUnused("Turbo"), build: buildMossWorkflow,
+    file: () => turboLora, node: "LoraLoaderModelOnly", missing: "This image used Turbo mode, but its LoRA is missing on the PC",
+  },
   // darask0's rapid-moss adapter brings its own sampler and sigmas, so only the step count applies.
   rapid: {
     tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
     sizeNote: "Trained at about 1 MP. Other sizes are untested.", cfgNote: "",
+    label: "Rapid", unused: distilledUnused("Rapid", "shift", "sampler", "scheduler"), build: buildRapidWorkflow,
+    file: () => rapidAdapter, node: "RapidMOSSAdapter", missing: "This image used Rapid mode, which needs the rapid-moss node and adapter on the PC",
   },
+  // Krea 2's shift of 1.15 sits between MOSS's half steps.
   krea2: {
     tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "", sampler: "euler", scheduler: "simple" }, steps: [4, 16], note: "8 to 12 is recommended.",
     sizeNote: "1 MP is the official default.",
     cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
+    family: "krea2", prompt: KREA2_PROMPT, shiftStep: 0.05, build: buildKrea2Workflow,
+    unused: { mode: "Krea 2 models have no Turbo or Rapid mode", slg: "Not used with Krea 2 models" },
   },
 };
+// Turbo and Rapid have no CFG, so the negative prompt and layer skip go unused, and EasyCache has nothing to skip.
+function distilledUnused(name, ...also) {
+  const reason = `Not used in ${name} mode`;
+  return { ...Object.fromEntries(["negative", "cfg", "slg", ...also].map((id) => [id, reason])), easycache: `${reason}: its few steps all change the image too much to skip` };
+}
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
@@ -87,9 +109,6 @@ const DEFAULTS = {
   mode: "full", tuning: {}, kind: "image",
   video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null },
 };
-// Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
-// scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
-const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked window of a corner café on a rainy evening, smiling softly as she holds a steaming mug in both hands. She wears a cream knit sweater, and her long teal twintails fall over her shoulders. A small chalkboard on the table reads \"Open late\" in white chalk. Warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. Soft anime illustration with clean lines and a muted, warm color palette, seen from the side at eye level in a medium shot. The mood is calm and cozy.";
 // "Enhance prompt" copies the prompt rewriters in ComfyUI's MOSS and Krea 2 templates
 // (comfyui-workflow-templates 0.11.89): the text encoder rewrites the prompt with TextGenerate first.
 // MOSS passes its instructions as the system prompt; Krea 2's template puts them in front of the prompt.
@@ -288,18 +307,27 @@ function renderModels() {
 }
 
 function defaultPrompt() {
-  return settings.mode === "krea2" ? KREA2_PROMPT : DEFAULTS.prompt;
+  return MODES[settings.mode].prompt ?? DEFAULTS.prompt;
+}
+
+// Whether the PC has the file a mode needs.
+function modeAvailable(mode) { return !MODES[mode].file || Boolean(MODES[mode].file()); }
+
+// The mode of a model family that has one of its own (Krea 2).
+function familyMode(modelName) {
+  const family = models.find((m) => m.name === modelName)?.family;
+  return family && Object.keys(MODES).find((m) => MODES[m].family === family);
 }
 
 // Krea 2 models get their own mode, and leaving them returns to the MOSS mode used before.
 // An untouched example prompt switches to the one written for the new model.
 function matchModeToModel() {
   const untouched = settings.prompt === defaultPrompt();
-  const krea2 = models.find((m) => m.name === settings.model)?.family === "krea2";
-  if (krea2 && settings.mode !== "krea2") {
+  const own = familyMode(settings.model);
+  if (own && settings.mode !== own) {
     settings.mossMode = settings.mode;
-    setMode("krea2");
-  } else if (!krea2 && settings.mode === "krea2") {
+    setMode(own);
+  } else if (!own && MODES[settings.mode].family) {
     setMode(settings.mossMode || "full");
   }
   if (untouched) settings.prompt = defaultPrompt();
@@ -322,23 +350,15 @@ function syncForm() {
   $("megapixels").value = MEGAPIXELS.indexOf(settings.mp);
   const { width, height } = dimensions(settings.aspect, settings.mp);
   $("size-out").textContent = `${settings.mp} MP · ${width} × ${height}`;
-  const turbo = settings.mode === "turbo";
-  const rapid = settings.mode === "rapid";
-  const krea2 = settings.mode === "krea2";
-  const distilled = turbo || rapid;
-  const unusedHere = `Not used in ${turbo ? "Turbo" : "Rapid"} mode`;
   const mode = MODES[settings.mode];
-  $("mode-field").hidden = !turboLora && !rapidAdapter;
-  setUnused($("mode-field"), krea2, "Krea 2 models have no Turbo or Rapid mode");
-  $("mode").querySelector("[data-mode=turbo]").hidden = !turboLora;
-  $("mode").querySelector("[data-mode=rapid]").hidden = !rapidAdapter;
-  $("mode").className = turboLora && rapidAdapter ? "segmented" : "segmented two";
+  const buttons = [...$("mode").children];
+  for (const b of buttons) b.hidden = !modeAvailable(b.dataset.mode);
+  const shown = buttons.filter((b) => !b.hidden).length;
+  $("mode-field").hidden = shown < 2;
+  $("mode").className = shown === 3 ? "segmented" : "segmented two";
   check($("mode"), "mode", settings.mode);
-  setUnused($("negative-field"), distilled || settings.cfg <= 1, distilled ? unusedHere : "Not used at CFG 1");
-  setUnused($("cfg-field"), distilled, unusedHere);
-  setUnused($("slg-field"), distilled || krea2, distilled ? unusedHere : "Not used with Krea 2 models");
-  setUnused($("easycache-field"), distilled, `${unusedHere}: its few steps all change the image too much to skip`);
-  for (const id of ["shift-field", "sampler-field", "scheduler-field"]) setUnused($(id), rapid, unusedHere);
+  const unused = { ...(settings.cfg <= 1 && { negative: "Not used at CFG 1" }), ...mode.unused };
+  for (const id of ["mode", "negative", "cfg", "slg", "easycache", "shift", "sampler", "scheduler"]) setUnused($(`${id}-field`), id in unused, unused[id]);
   [$("steps").min, $("steps").max] = mode.steps;
   $("steps-note").textContent = mode.note;
   $("size-note").textContent = mode.sizeNote;
@@ -352,12 +372,12 @@ function syncForm() {
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
       ]
     : [
-        turbo ? "Turbo" : rapid ? "Rapid" : "",
+        mode.label,
         settings.enhance ? "enhanced prompt" : "",
-        settings.easyCache && !distilled ? "EasyCache" : "",
+        settings.easyCache && !mode.unused.easycache ? "EasyCache" : "",
         `${width}×${height}`,
         `${settings.steps} steps`,
-        distilled ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
+        mode.unused.cfg ? "" : `CFG ${Number(settings.cfg).toFixed(1)}`,
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
         settings.batch > 1 ? `${settings.batch} images` : "",
       ]).filter(Boolean).join(" · ");
@@ -372,10 +392,9 @@ function syncForm() {
   $("easycache").checked = settings.easyCache;
   $("batch-out").textContent = settings.batch;
   $("model").value = settings.model;
-  // Krea 2's shift of 1.15 sits between MOSS's half steps.
-  $("shift").step = krea2 ? 0.05 : 0.5;
+  $("shift").step = mode.shiftStep ?? 0.5;
   $("shift").value = settings.shift;
-  $("shift-out").textContent = Number(settings.shift).toFixed(krea2 ? 2 : 1);
+  $("shift-out").textContent = Number(settings.shift).toFixed(mode.shiftStep ? 2 : 1);
   check($("slg"), "layer", settings.slgLayer);
   $("sampler").value = settings.sampler;
   $("scheduler").value = settings.scheduler;
@@ -416,6 +435,28 @@ function syncVideoForm() {
 // Each item is an image (role start, at, end or ref), a gallery video or a voice (always ref).
 // v.extend is the gallery video being continued.
 function usesRefs(v) { return v.items.some((i) => i.role === "ref"); }
+
+// Each role's tile caption, note in the image dialog and Info row (tag is a reference's name in the
+// prompt), and how start and end reach H3: Image to Video's frame inputs, or on the reference model an
+// Add Guide at the first or last frame. Only one image can take each of those.
+const ROLES = {
+  start: {
+    caption: () => "Start", note: () => "The video starts on this image and keeps its shape.",
+    info: "Start image", detail: (i) => mediaPath(i), input: "first_frame", frame: 0,
+  },
+  at: {
+    caption: (i) => `At ${i.at} s`, note: () => "The video passes through this image at the time above.",
+    info: "Images partway", detail: (i) => `${mediaPath(i)} at ${i.at} s`,
+  },
+  end: {
+    caption: () => "End", note: () => "The video ends on this image.",
+    info: "End image", detail: (i) => mediaPath(i), input: "last_frame", frame: -1,
+  },
+  ref: {
+    caption: (i, tag) => tag, note: (tag) => `Called <${tag}> in the prompt. The video follows its character, place or style without showing it as a frame.`,
+    info: "References", detail: (i, tag) => `${tag}: ${mediaPath(i)}`,
+  },
+};
 
 function mediaPath(item) { return item.subfolder ? `${item.subfolder}/${item.name}` : item.name; }
 
@@ -460,7 +501,7 @@ function renderMedia() {
     el("span", { textContent: caption }));
   $("media").replaceChildren(
     ...(v.extend ? [tile(v.extend, "Continues")] : []),
-    ...v.items.map((i) => tile(i, i.role === "ref" ? tags.get(i)[0] : i.role === "at" ? `At ${i.at} s` : i.role === "start" ? "Start" : "End")),
+    ...v.items.map((i) => tile(i, ROLES[i.role].caption(i, tags.get(i)?.[0]))),
     el("button", { type: "button", className: "add", onclick: pickMedia }, el("span", { className: "tile-icon", textContent: "+" }), el("span", { textContent: "Add" })));
 }
 
@@ -492,7 +533,7 @@ function addMedia(item, role) {
 
 // Only one image can start or end the video; the one there before moves partway.
 function setRole(item, role) {
-  if (role === "start" || role === "end") for (const i of settings.video.items) if (i.role === role) i.role = "at";
+  if (ROLES[role].input) for (const i of settings.video.items) if (i.role === role) i.role = "at";
   item.role = role;
 }
 
@@ -535,12 +576,7 @@ function syncItem() {
     ? "The new video picks up from the end of this one and is joined onto it. Describe what happens next."
     : item.kind === "video" ? `Called <${tags[0]}> in the prompt, and its sound <${tags[1]}>. The video can follow its characters, motion or camera work.`
     : item.kind === "audio" ? `Called <${tags[0]}> in the prompt. Use it as a voice, e.g. "<${tags[0]}> is the voice-timbre reference for <Subject 1> (S1)."`
-    : {
-        start: "The video starts on this image and keeps its shape.",
-        at: "The video passes through this image at the time above.",
-        end: "The video ends on this image.",
-        ref: `Called <${tags?.[0]}> in the prompt. The video follows its character, place or style without showing it as a frame.`,
-      }[item.role];
+    : ROLES[item.role].note(tags?.[0]);
 }
 
 // Images and voices go into ComfyUI's input folder (input/studio), where LoadImage and LoadAudio read them.
@@ -653,14 +689,16 @@ function bindForm() {
 /* ---------- generation ---------- */
 
 function buildWorkflow(s) {
-  const model = models.find((m) => m.name === s.model);
   const { width, height } = dimensions(s.aspect, s.mp);
-  if (model.family === "krea2") return buildKrea2Workflow(s, model, width, height);
-  if (s.mode === "rapid") return buildRapidWorkflow(s, model, width, height);
+  return MODES[s.mode].build(s, models.find((m) => m.name === s.model), width, height);
+}
+
+// Quality, and Turbo with its LoRA. ComfyUI's native MOSS model takes raw 0-1 timesteps:
+// ModelSamplingSD3 would scale them by 1000 and produce pure noise, so the shift goes through the
+// AuraFlow node instead.
+function buildMossWorkflow(s, model, width, height) {
   const turbo = s.mode === "turbo";
   const cache = s.easyCache && !turbo;
-  // ComfyUI's native MOSS model takes raw 0-1 timesteps: ModelSamplingSD3 would scale them by 1000
-  // and produce pure noise, so the shift goes through the AuraFlow node instead.
   return {
     ...loaderNodes(model, "moss_image"),
     ...(turbo && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: turboLora, strength_model: 1, model: ["1", 0] } } }),
@@ -818,7 +856,7 @@ function buildVideoWorkflow(s) {
   const add = (class_type, inputs) => { graph[next] = { class_type, inputs }; return String(next++); };
   const image = (item) => [add("LoadImage", { image: mediaPath(item) }), 0];
   const video = (item) => add("GetVideoComponents", { video: [add("LoadVideo", { file: `${mediaPath(item)} [output]` }), 0] });
-  const start = v.items.find((i) => i.role === "start"), end = v.items.find((i) => i.role === "end");
+  const ends = ["start", "end"].map((role) => v.items.find((i) => i.role === role)).filter(Boolean);
   const guides = [];
   let head = null;
   if (v.extend) {
@@ -845,13 +883,12 @@ function buildVideoWorkflow(s) {
     });
     kinds.audio.forEach((i, n) => { inputs[`ref_audios.ref_audio_${n}`] = [add("LoadAudio", { audio: mediaPath(i) }), 0]; });
     graph["4"] = { class_type: "MiniMaxH3ReferenceToVideo", inputs };
-    if (start) guides.push({ image: image(start), frame_idx: 0 });
-    if (end) guides.push({ image: image(end), frame_idx: -1 });
+    for (const i of ends) guides.push({ image: image(i), frame_idx: ROLES[i.role].frame });
   } else {
     const line = !FRAMES_LINE.test(v.prompt) && framesLine(v, length);
     graph["4"] = {
       class_type: "MiniMaxH3ImageToVideo",
-      inputs: { ...shared, prompt: line ? `${line}\n\n${v.prompt}` : v.prompt, ...(start && { first_frame: image(start) }), ...(end && { last_frame: image(end) }) },
+      inputs: { ...shared, prompt: line ? `${line}\n\n${v.prompt}` : v.prompt, ...Object.fromEntries(ends.map((i) => [ROLES[i.role].input, image(i)])) },
     };
   }
   for (const i of v.items.filter((i) => i.role === "at")) {
@@ -1267,30 +1304,30 @@ function typedPrompt(graph, s) {
   return { rewriter, prompt: rewriter ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text };
 }
 
+// The image mode a saved workflow ran in, told by the node that marks it. Krea 2 is told by its model instead.
+function savedMode(graph) {
+  return Object.keys(MODES).find((m) => MODES[m].node && inputsOf(graph, MODES[m].node)) ?? "full";
+}
+
 function h3Node(graph) { return inputsOf(graph, "MiniMaxH3ImageToVideo") ?? inputsOf(graph, "MiniMaxH3ReferenceToVideo"); }
 
 function infoRows(info) {
   const graph = info?.prompt;
   if (!graph) return [["Settings", "This file has no saved settings."]];
   const find = (type) => inputsOf(graph, type);
-  const lora = find("LoraLoaderModelOnly")?.lora_name;
-  const turbo = lora ? " · Turbo" : find("RapidMOSSAdapter") ? " · Rapid" : "";
   const size = `${info.width} × ${info.height}`;
   const h3 = h3Node(graph);
   if (h3) {
-    const fast = lora && lora === videoFiles?.fast_lora;
+    const lora = find("LoraLoaderModelOnly")?.lora_name;
+    const mode = !lora ? "" : lora === videoFiles?.fast_lora ? " · Fast" : " · Turbo";
     const { items, extend } = videoMedia(graph, h3);
     const tags = referenceTags({ items });
-    const role = (r) => items.filter((i) => i.role === r);
     const e = info.encoding;
     return [
       ["Prompt", h3.prompt.replace(FRAMES_LINE, "")],
-      ["Model", `MiniMax H3${find("MiniMaxH3ReferenceToVideo") ? " references" : ""}${fast ? " · Fast" : turbo}`],
+      ["Model", `MiniMax H3${find("MiniMaxH3ReferenceToVideo") ? " references" : ""}${mode}`],
       ["Continues", extend && mediaPath(extend)],
-      ["Start image", role("start").map(mediaPath).join()],
-      ["Images partway", role("at").map((i) => `${mediaPath(i)} at ${i.at} s`).join("\n")],
-      ["End image", role("end").map(mediaPath).join()],
-      ["References", role("ref").map((i) => `${tags.get(i)[0]}: ${mediaPath(i)}`).join("\n")],
+      ...Object.entries(ROLES).map(([role, r]) => [r.info, items.filter((i) => i.role === role).map((i) => r.detail(i, tags.get(i)?.[0])).join("\n")]),
       ["Size", size],
       ["Length", `${Math.round((e?.frames || h3.length) / (e?.fps || 24))} s`],
       ["Steps", find("BasicScheduler")?.steps],
@@ -1306,7 +1343,7 @@ function infoRows(info) {
     [rewriter ? "Original prompt" : "Prompt", prompt],
     ["Enhanced prompt", rewriter && (info.enhanced_prompt ?? "Not saved in this file.")],
     ["Negative prompt", s.cfg > 1 ? linked(graph, s.negative)?.inputs.text : null],
-    ["Model", unet && unet + turbo],
+    ["Model", unet && [unet, MODES[savedMode(graph)].label].filter(Boolean).join(" · ")],
     ["Size", size],
     ["Steps", s.steps],
     ["Prompt strength (CFG)", s.cfg],
@@ -1368,11 +1405,9 @@ async function reuseCurrent() {
     settings.mp = nearest(MEGAPIXELS, latent.width * latent.height);
     settings.batch = latent.batch_size || 1;
   }
-  const turbo = Boolean(inputsOf(graph, "LoraLoaderModelOnly"));
-  if (turbo && !turboLora) { toast("This image used Turbo mode, but its LoRA is missing on the PC"); return; }
-  const rapid = Boolean(inputsOf(graph, "RapidMOSSAdapter"));
-  if (rapid && !rapidAdapter) { toast("This image used Rapid mode, which needs the rapid-moss node and adapter on the PC"); return; }
-  settings.mode = rapid ? "rapid" : turbo ? "turbo" : "full";
+  const mode = savedMode(graph);
+  if (!modeAvailable(mode)) { toast(MODES[mode].missing); return; }
+  settings.mode = mode;
   settings.easyCache = Boolean(inputsOf(graph, "EasyCache"));
   settings.shift = (inputsOf(graph, "ModelSamplingAuraFlow") ?? inputsOf(graph, "ModelSamplingSD3"))?.shift ?? settings.shift;
   const slg = inputsOf(graph, "SkipLayerGuidanceDiTSimple");
@@ -1382,7 +1417,7 @@ async function reuseCurrent() {
   const model = inputsOf(graph, "MOSSImageHFLoader") ? models.find((m) => m.family === "moss") : models.find((m) => m.unet === unet);
   if (model) settings.model = model.name;
   else if (unet) toast("This image used a model that is no longer on the PC");
-  if (models.find((m) => m.name === settings.model)?.family === "krea2") settings.mode = "krea2";
+  settings.mode = familyMode(settings.model) ?? settings.mode;
   toCreate("image", "Settings loaded with the same seed. Turn on “Randomize” for variations.");
 }
 
@@ -1425,10 +1460,9 @@ function videoMedia(graph, h3) {
     };
   };
   const items = [];
-  if (h3.first_frame) items.push(item(h3.first_frame, "start"));
-  if (h3.last_frame) items.push(item(h3.last_frame, "end"));
+  for (const [role, r] of Object.entries(ROLES)) if (h3[r.input]) items.push(item(h3[r.input], role));
   for (const g of guides) {
-    if (node(g.image).class_type === "LoadImage") items.push(item(g.image, g.frame_idx === 0 ? "start" : g.frame_idx === -1 ? "end" : "at", g.frame_idx));
+    if (node(g.image).class_type === "LoadImage") items.push(item(g.image, Object.keys(ROLES).find((r) => ROLES[r].frame === g.frame_idx) ?? "at", g.frame_idx));
   }
   for (const [key, link] of Object.entries(h3)) if (/^ref_(images|videos|audios)\./.test(key)) items.push(item(link, "ref"));
   if (!source) return { items, extend: null };
@@ -1724,7 +1758,7 @@ async function loadModels() {
   const { sampler_name, scheduler } = ksampler?.KSampler.input.required ?? {};
   $("sampler").replaceChildren(...(sampler_name?.[0] ?? [settings.sampler]).map((n) => new Option(n, n)));
   $("scheduler").replaceChildren(...(scheduler?.[0] ?? [settings.scheduler]).map((n) => new Option(n, n)));
-  if ((!turboLora && settings.mode === "turbo") || (!rapidAdapter && settings.mode === "rapid")) setMode("full");
+  if (!modeAvailable(settings.mode)) setMode("full");
   if (!videoFiles) settings.kind = "image";
   else if (!models.length) settings.kind = "video";
   renderModels();
