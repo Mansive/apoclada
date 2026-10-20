@@ -1351,7 +1351,7 @@ async function loadPrefs(change) {
   // The PC lists the encoders it can run for each codec: an NVIDIA or AMD graphics card's, and the CPU.
   const hevc = p.video_codec === "hevc";
   const encoders = p.video_encoders[p.video_codec];
-  const labels = { nvidia: "NVIDIA GPU", amd: "AMD GPU", software: "Software" };
+  const labels = { nvidia: "NVIDIA GPU", amd: "Hardware", software: "Software" };
   $("video-format").replaceChildren(...[
     group(
       radio("H.264", "Works everywhere", !hevc, { video_codec: "h264" }),
