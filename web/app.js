@@ -56,11 +56,34 @@ A slow lo-fi piano melody with soft brushed drums.`;
 // MiniMax's guide opens prompts with start or end images with a line saying where they fall in the video.
 const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
 const FRAMES_LINE = /^(For the target video|How the reference pictures align)[^\n]*\n\n/;
+// Per-mode sampler settings. Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without
+// CFG, so layer skip guidance (which acts on the uncond pass) is off. Shift 5 tested best.
+// krea2 is used whenever a Krea 2 model is picked: lodestones recommend 8 to 12 steps, CFG 1 to 1.5
+// and Krea 2's own shift of 1.15 for Kroma, and Comfy's Krea 2 Turbo template uses 8 steps at CFG 1.
+const MOSS_NOTES = {
+  sizeNote: "1 to 2 MP is recommended. Other sizes work but are less reliable.",
+  cfgNote: "3 suits long prompts. Try 4 to 6 for short prompts.",
+};
+const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
+const MODES = {
+  full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
+  turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
+  // darask0's rapid-moss adapter brings its own sampler and sigmas, so only the step count applies.
+  rapid: {
+    tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
+    sizeNote: "Trained at about 1 MP. Other sizes are untested.", cfgNote: "",
+  },
+  krea2: {
+    tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "", sampler: "euler", scheduler: "simple" }, steps: [4, 16], note: "8 to 12 is recommended.",
+    sizeNote: "1 MP is the official default.",
+    cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
+  },
+};
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
   negative: "worst quality, bad anatomy, watermark, jpeg artifact",
-  aspect: "1:1", mp: 1, steps: 50, cfg: 3, seed: 42,
-  randomSeed: true, batch: 1, shift: 5, slgLayer: "22", model: "", enhance: false, easyCache: false,
+  aspect: "1:1", mp: 1, ...MODES.full.tuning, seed: 42,
+  randomSeed: true, batch: 1, model: "", enhance: false, easyCache: false,
   mode: "full", tuning: {}, kind: "image",
   video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null },
 };
@@ -121,29 +144,6 @@ const PROMPT_HINTS = {
   image: "Describe the image. Tap \"Default prompts\" for an example tailored to the selected model.",
   video: "Describe the video and its sound. Tap \"Default prompts\" for an example in MiniMax's format.",
 };
-// Per-mode sampler settings. Turbo is lodestones' 8-step DMD LoRA: distilled for 8 steps without
-// CFG, so layer skip guidance (which acts on the uncond pass) is off. Shift 5 tested best.
-// krea2 is used whenever a Krea 2 model is picked: lodestones recommend 8 to 12 steps, CFG 1 to 1.5
-// and Krea 2's own shift of 1.15 for Kroma, and Comfy's Krea 2 Turbo template uses 8 steps at CFG 1.
-const MOSS_NOTES = {
-  sizeNote: "1 to 2 MP is recommended. Other sizes work but are less reliable.",
-  cfgNote: "3 suits long prompts. Try 4 to 6 for short prompts.",
-};
-const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
-const MODES = {
-  full: { tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES },
-  turbo: { tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES },
-  // darask0's rapid-moss adapter brings its own sampler and sigmas, so only the step count applies.
-  rapid: {
-    tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
-    sizeNote: "Trained at about 1 MP. Other sizes are untested.", cfgNote: "",
-  },
-  krea2: {
-    tuning: { steps: 8, cfg: 1, shift: 1.15, slgLayer: "", sampler: "euler", scheduler: "simple" }, steps: [4, 16], note: "8 to 12 is recommended.",
-    sizeNote: "1 MP is the official default.",
-    cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
-  },
-};
 const NODE_STAGES = { "1": "Loading model…", "2": "Loading model…", "3": "Loading model…", "4": "Reading prompt…", "5": "Reading prompt…", "30": "Rewriting prompt…", "16": "Generating…", "17": "Decoding…", "18": "Saving…" };
 const SETTINGS_KEY = "moss-studio-settings-v2";
 const PENDING_KEY = "moss-studio-pending";
@@ -157,30 +157,34 @@ function save(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ }
 }
 
+function getJson(url, fallback = null) {
+  return fetch(url).then((r) => r.json()).catch(() => fallback);
+}
+function post(url, body) {
+  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children.filter((c) => c !== null && c !== false));
+  return node;
+}
+
+// Marks the button in a radio group whose data-<key> matches.
+function check(group, key, value) {
+  for (const b of group.children) b.setAttribute("aria-checked", b.dataset[key] === value);
+}
+
 // ComfyUI only sends progress and completion events to the client that queued the job. The "moss-"
 // prefix asks __init__.py to copy every job's events to each Apoclada Studio page, so the id needn't
 // survive a reload; a fresh one per page keeps two open tabs from taking each other's socket.
 const clientId = `moss-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
 let settings = { ...DEFAULTS, ...load(SETTINGS_KEY, null) };
-if (settings.negative === "nsfw, worst quality, bad anatomy, watermark, jpeg artifact") settings.negative = DEFAULTS.negative;
 settings.video = { ...DEFAULTS.video, ...settings.video };
-// Video mode was a Turbo on/off switch before Fast was added.
-if ("turbo" in settings.video) { settings.video.mode = settings.video.turbo ? "turbo" : "quality"; delete settings.video.turbo; }
-if (settings.video.mp === 1) settings.video.mp = 0.98;
-// Start images moved from input/mobile to input/studio with the rename to Apoclada Studio.
-if (settings.video.start?.subfolder === "mobile") settings.video.start.subfolder = "studio";
 // The start image became one of the video's images.
 if (settings.video.start) settings.video.items = [{ kind: "image", role: "start", at: 2.5, ...settings.video.start }];
 delete settings.video.start;
-// The video prompt started out empty; an empty one can't be generated, so it gets the example.
-settings.video.prompt ||= videoPrompt(settings.video);
-// The 8-step mode was saved as "fast" before it was renamed to Turbo.
-for (const k of ["mode", "mossMode"]) if (settings[k] === "fast") settings[k] = "turbo";
-if (settings.tuning?.fast) { settings.tuning.turbo = settings.tuning.fast; delete settings.tuning.fast; }
-// Settings saved before the sampler could be picked get the mode's default.
-settings.sampler ??= MODES[settings.mode].tuning.sampler;
-settings.scheduler ??= MODES[settings.mode].tuning.scheduler;
 let models = [];
 let turboLora = null;
 let rapidAdapter = null;
@@ -243,31 +247,23 @@ function sizeSlider(slider, sizes, pick) {
   slider.oninput = () => { pick(sizes[slider.value]); syncForm(); };
 }
 
+function choice(key, value, onclick, ...children) {
+  const btn = el("button", { type: "button", onclick }, ...children);
+  btn.setAttribute("role", "radio");
+  btn.dataset[key] = value;
+  return btn;
+}
+
 function renderChoices() {
   $("aspects").replaceChildren(...ASPECTS.map(([name, a, b]) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.setAttribute("role", "radio");
-    btn.dataset.aspect = name;
     const scale = 18 / Math.max(a, b);
-    const shape = document.createElement("span");
-    shape.className = "shape";
+    const shape = el("span", { className: "shape" });
     shape.style.width = `${a * scale}px`;
     shape.style.height = `${b * scale}px`;
-    btn.append(shape, name);
-    btn.onclick = () => { (settings.kind === "video" ? settings.video : settings).aspect = name; syncForm(); };
-    return btn;
+    return choice("aspect", name, () => { (settings.kind === "video" ? settings.video : settings).aspect = name; syncForm(); }, shape, name);
   }));
   sizeSlider($("megapixels"), MEGAPIXELS, (mp) => { settings.mp = mp; });
-  $("slg").replaceChildren(...SLG_LAYERS.map(([layer, label]) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.setAttribute("role", "radio");
-    btn.dataset.layer = layer;
-    btn.textContent = label;
-    btn.onclick = () => { settings.slgLayer = layer; syncForm(); };
-    return btn;
-  }));
+  $("slg").replaceChildren(...SLG_LAYERS.map(([layer, label]) => choice("layer", layer, () => { settings.slgLayer = layer; syncForm(); }, label)));
   sizeSlider($("video-mp"), VIDEO_MP, (mp) => { settings.video.mp = mp; });
   for (const b of $("mode").children) b.onclick = () => setMode(b.dataset.mode);
   for (const b of $("video-mode").children) b.onclick = () => { settings.video.mode = b.dataset.mode; syncForm(); };
@@ -314,12 +310,12 @@ function syncForm() {
   const v = settings.video;
   $("form").dataset.kind = settings.kind;
   $("kind").hidden = !videoFiles;
-  for (const b of $("kind").children) b.setAttribute("aria-checked", b.dataset.kind === settings.kind);
+  check($("kind"), "kind", settings.kind);
   $("prompt").value = video ? v.prompt : settings.prompt;
   $("prompt").placeholder = PROMPT_HINTS[settings.kind];
   $("negative").value = settings.negative;
   if (settings.negative) $("negative").closest("details").open = true;
-  for (const b of $("aspects").children) b.setAttribute("aria-checked", b.dataset.aspect === (video ? v.aspect : settings.aspect));
+  check($("aspects"), "aspect", video ? v.aspect : settings.aspect);
   setUnused($("shape-field"), video && Boolean(v.extend || v.items.some((i) => i.role === "start")),
     v.extend ? "The video keeps the shape of the one it continues" : "The video takes the start image's shape");
   syncVideoForm();
@@ -337,7 +333,7 @@ function syncForm() {
   $("mode").querySelector("[data-mode=turbo]").hidden = !turboLora;
   $("mode").querySelector("[data-mode=rapid]").hidden = !rapidAdapter;
   $("mode").className = turboLora && rapidAdapter ? "segmented" : "segmented two";
-  for (const b of $("mode").children) b.setAttribute("aria-checked", b.dataset.mode === settings.mode);
+  check($("mode"), "mode", settings.mode);
   setUnused($("negative-field"), distilled || settings.cfg <= 1, distilled ? unusedHere : "Not used at CFG 1");
   setUnused($("cfg-field"), distilled, unusedHere);
   setUnused($("slg-field"), distilled || krea2, distilled ? unusedHere : "Not used with Krea 2 models");
@@ -380,9 +376,10 @@ function syncForm() {
   $("shift").step = krea2 ? 0.05 : 0.5;
   $("shift").value = settings.shift;
   $("shift-out").textContent = Number(settings.shift).toFixed(krea2 ? 2 : 1);
-  for (const b of $("slg").children) b.setAttribute("aria-checked", b.dataset.layer === settings.slgLayer);
+  check($("slg"), "layer", settings.slgLayer);
   $("sampler").value = settings.sampler;
-  $("scheduler").value = settings.scheduler;  save(SETTINGS_KEY, settings);
+  $("scheduler").value = settings.scheduler;
+  save(SETTINGS_KEY, settings);
 }
 
 // Settings the current mode ignores stay in place, grayed out, so the form doesn't jump around.
@@ -395,11 +392,11 @@ function setUnused(field, unused, reason) {
 function syncVideoForm() {
   const v = settings.video;
   const mode = videoMode(v);
-  const refs = usesRefs(v);
-  $("video-mode").querySelector("[data-mode=turbo]").disabled = !(refs ? videoFiles?.ref_lora : videoFiles?.lora);
-  $("video-mode").querySelector("[data-mode=turbo] small").textContent = `${refs ? REF_LORA_STEPS : VIDEO_LORA_STEPS.turbo} steps`;
-  $("video-mode").querySelector("[data-mode=fast]").disabled = refs || !videoFiles?.fast_lora;
-  for (const b of $("video-mode").children) b.setAttribute("aria-checked", b.dataset.mode === mode);
+  const loras = videoLoras(v);
+  $("video-mode").querySelector("[data-mode=turbo]").disabled = !loras.turbo[0];
+  $("video-mode").querySelector("[data-mode=turbo] small").textContent = `${loras.turbo[1]} steps`;
+  $("video-mode").querySelector("[data-mode=fast]").disabled = !loras.fast?.[0];
+  check($("video-mode"), "mode", mode);
   $("video-mode").querySelector("[data-mode=quality] small").textContent = `${v.steps} steps`;
   setUnused($("vsteps-field"), mode !== "quality", `${mode === "fast" ? "Fast" : "Turbo"} always uses ${videoSteps(v, mode)} steps`);
   $("vsteps").value = v.steps;
@@ -529,7 +526,7 @@ function syncItem() {
   ref.disabled = item.role !== "ref" && v.items.filter((i) => i.kind === "image" && i.role === "ref").length >= 9;
   $("item-role").className = ref.hidden ? "segmented" : "segmented four";
   $("item-role").querySelector("[data-role=start]").disabled = Boolean(v.extend);
-  for (const b of $("item-role").children) b.setAttribute("aria-checked", b.dataset.role === item.role);
+  check($("item-role"), "role", item.role);
   $("item-at-field").hidden = item.role !== "at";
   $("item-at").max = Math.max(0.5, v.seconds - 0.5);
   $("item-at").value = item.at;
@@ -580,15 +577,14 @@ const MINUS = "M3 8h10", PLUS = "M3 8h10M8 3v10";
 function addSliderButtons() {
   for (const slider of document.querySelectorAll("input[type=range]")) {
     const nudge = (path, label, move) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${path}" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+      const btn = el("button", {
+        type: "button", onclick: () => { move(); slider.dispatchEvent(new Event("input")); },
+        innerHTML: `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${path}" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+      });
       btn.setAttribute("aria-label", label);
-      btn.onclick = () => { move(); slider.dispatchEvent(new Event("input")); };
       return btn;
     };
-    const row = document.createElement("div");
-    row.className = "slider";
+    const row = el("div", { className: "slider" });
     slider.replaceWith(row);
     row.append(nudge(MINUS, "Less", () => slider.stepDown()), slider, nudge(PLUS, "More", () => slider.stepUp()));
   }
@@ -662,14 +658,13 @@ function buildWorkflow(s) {
   if (model.family === "krea2") return buildKrea2Workflow(s, model, width, height);
   if (s.mode === "rapid") return buildRapidWorkflow(s, model, width, height);
   const turbo = s.mode === "turbo";
+  const cache = s.easyCache && !turbo;
   // ComfyUI's native MOSS model takes raw 0-1 timesteps: ModelSamplingSD3 would scale them by 1000
   // and produce pure noise, so the shift goes through the AuraFlow node instead.
   return {
-    "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
-    "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "moss_image", device: "default" } },
-    "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
+    ...loaderNodes(model, "moss_image"),
     ...(turbo && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: turboLora, strength_model: 1, model: ["1", 0] } } }),
-    ...(s.enhance && enhanceNodes(s, { prompt: s.prompt, system_prompt: MOSS_ENHANCE, max_length: 4096, "sampling_mode.repetition_penalty": 1, mtp: "auto" })),
+    ...(s.enhance && mossEnhanceNodes(s)),
     "4": { class_type: "CLIPTextEncode", inputs: { text: s.enhance ? ["30", 0] : s.prompt, clip: ["2", 0] } },
     "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
     "6": { class_type: "EmptyFlux2LatentImage", inputs: { width, height, batch_size: s.batch } },
@@ -678,12 +673,12 @@ function buildWorkflow(s) {
       class_type: "SkipLayerGuidanceDiTSimple",
       inputs: { double_layers: "", single_layers: s.slgLayer, start_percent: 0, end_percent: 1, model: ["15", 0] },
     },
-    ...(s.easyCache && !turbo && easyCacheNode(["13", 0])),
+    ...(cache && easyCacheNode(["13", 0])),
     "16": {
       class_type: "KSampler",
       inputs: {
         seed: s.seed, steps: s.steps, cfg: s.cfg, sampler_name: s.sampler, scheduler: s.scheduler, denoise: 1,
-        model: [s.easyCache && !turbo ? "40" : "13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
+        model: [cache ? "40" : "13", 0], positive: ["4", 0], negative: ["5", 0], latent_image: ["6", 0],
       },
     },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
@@ -695,11 +690,9 @@ function buildWorkflow(s) {
 // SamplerCustomAdvanced the adapter's own sampler and sigmas. No CFG, so BasicGuider and no negative prompt.
 function buildRapidWorkflow(s, model, width, height) {
   return {
-    "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
-    "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "moss_image", device: "default" } },
-    "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
+    ...loaderNodes(model, "moss_image"),
     "20": { class_type: "RapidMOSSAdapter", inputs: { model: ["1", 0], adapter: rapidAdapter, steps: s.steps, lora_strength: 1 } },
-    ...(s.enhance && enhanceNodes(s, { prompt: s.prompt, system_prompt: MOSS_ENHANCE, max_length: 4096, "sampling_mode.repetition_penalty": 1, mtp: "auto" })),
+    ...(s.enhance && mossEnhanceNodes(s)),
     "4": { class_type: "CLIPTextEncode", inputs: { text: s.enhance ? ["30", 0] : s.prompt, clip: ["2", 0] } },
     "6": { class_type: "EmptyFlux2LatentImage", inputs: { width, height, batch_size: s.batch } },
     "21": { class_type: "BasicGuider", inputs: { model: ["20", 0], conditioning: ["4", 0] } },
@@ -708,6 +701,18 @@ function buildRapidWorkflow(s, model, width, height) {
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
     "18": saveNode("studio/moss", s),
   };
+}
+
+function loaderNodes(model, clipType) {
+  return {
+    "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: clipType, device: "default" } },
+    "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
+  };
+}
+
+function mossEnhanceNodes(s) {
+  return enhanceNodes(s, { prompt: s.prompt, system_prompt: MOSS_ENHANCE, max_length: 4096, "sampling_mode.repetition_penalty": 1, mtp: "auto" });
 }
 
 // TextGenerate "30" rewrites the prompt with the template's sampler settings. It uses the image's
@@ -733,7 +738,7 @@ function easyCacheNode(model) {
 // Apoclada's save nodes write the generation time and enhanced prompt into the file for the viewer's Info.
 function saveNode(prefix, s) {
   const inputs = { filename_prefix: prefix, images: ["17", 0], ...(s.enhance && { enhanced_prompt: ["30", 0] }) };
-  if (prefs.image_format === "jxl" && prefs.jxl_available) return { class_type: "ApocladaSaveImageJXL", inputs: { ...inputs, lossless: prefs.jxl_lossless } };
+  if (prefs.image_format === "jxl") return { class_type: "ApocladaSaveImageJXL", inputs: { ...inputs, lossless: prefs.jxl_lossless } };
   return { class_type: "ApocladaSaveImage", inputs };
 }
 
@@ -741,9 +746,7 @@ function saveNode(prefix, s) {
 // ModelSamplingAuraFlow, which matches Krea 2's own flow sampling. Node ids line up with NODE_STAGES.
 function buildKrea2Workflow(s, model, width, height) {
   return {
-    "1": { class_type: "UNETLoader", inputs: { unet_name: model.unet, weight_dtype: "default" } },
-    "2": { class_type: "CLIPLoader", inputs: { clip_name: model.clip, type: "krea2", device: "default" } },
-    "3": { class_type: "VAELoader", inputs: { vae_name: model.vae } },
+    ...loaderNodes(model, "krea2"),
     ...(s.enhance && enhanceNodes(s, { prompt: KREA2_ENHANCE + s.prompt, max_length: 512, "sampling_mode.repetition_penalty": 1.05 })),
     "4": { class_type: "CLIPTextEncode", inputs: { text: s.enhance ? ["30", 0] : s.prompt, clip: ["2", 0] } },
     "5": { class_type: "CLIPTextEncode", inputs: { text: s.negative, clip: ["2", 0] } },
@@ -762,20 +765,21 @@ function buildKrea2Workflow(s, model, width, height) {
   };
 }
 
-// Turbo and Fast fall back to Quality when their LoRA isn't on the PC. The reference model has
-// its own Turbo LoRA, which ComfyUI's template runs at 4 steps, and no Fast one, so Fast runs as Turbo.
-const VIDEO_LORA_STEPS = { turbo: 8, fast: 4 };
-const REF_LORA_STEPS = 4;
+// Each mode's LoRA and steps. The reference model has its own Turbo LoRA, which ComfyUI's template
+// runs at 4 steps, and no Fast one.
+function videoLoras(v) {
+  return usesRefs(v) ? { turbo: [videoFiles?.ref_lora, 4] } : { turbo: [videoFiles?.lora, 8], fast: [videoFiles?.fast_lora, 4] };
+}
+
+// Fast runs as Turbo on the reference model, and either falls back to Quality when its LoRA isn't on the PC.
 function videoMode(v) {
-  const refs = usesRefs(v);
-  const mode = refs && v.mode === "fast" ? "turbo" : v.mode;
-  if (mode === "turbo" && (refs ? videoFiles?.ref_lora : videoFiles?.lora)) return "turbo";
-  if (mode === "fast" && videoFiles?.fast_lora) return "fast";
-  return "quality";
+  const loras = videoLoras(v);
+  const mode = v.mode in loras ? v.mode : "turbo";
+  return v.mode !== "quality" && loras[mode][0] ? mode : "quality";
 }
 
 function videoSteps(v, mode) {
-  return mode === "quality" ? v.steps : usesRefs(v) ? REF_LORA_STEPS : VIDEO_LORA_STEPS[mode];
+  return mode === "quality" ? v.steps : videoLoras(v)[mode][1];
 }
 
 // The line that opens the prompt for a start image, an end image or both, from MiniMax's guide:
@@ -799,7 +803,7 @@ function buildVideoWorkflow(s) {
   const { width, height } = videoDimensions(v);
   const refs = usesRefs(v);
   const mode = videoMode(v);
-  const lora = mode === "quality" ? null : refs ? videoFiles.ref_lora : { turbo: videoFiles.lora, fast: videoFiles.fast_lora }[mode];
+  const lora = mode === "quality" ? null : videoLoras(v)[mode][0];
   const model = [lora ? "20" : "1", 0];
   // Extending makes a new video that opens on the old one's last 22 frames, from a second before its end.
   const length = videoLength(v.seconds + (v.extend ? 1 : 0));
@@ -883,16 +887,14 @@ async function generate() {
   if (video && usesRefs(settings.video) && !videoFiles.ref_unet) { toast("References need the MiniMax H3 references pack. Download it in Setup."); return; }
   if (settings.randomSeed) settings.seed = Math.floor(Math.random() * 2 ** 48);
   syncForm();
-  prefs = await fetch("/studio/prefs").then((r) => r.json()).catch(() => prefs);
+  prefs = await getJson("/studio/prefs", prefs);
   // On AMD, a video made after another generation samples about 3x slower until ComfyUI unloads
   // everything (ComfyUI issue #16502). ComfyUI applies /free between jobs, so a video queued behind
   // another job still gets it just before it starts.
-  if (video) await fetch("/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unload_models: true, free_memory: true }) }).catch(() => null);
-  const res = await fetch("/prompt", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // ComfyUI sends no previews unless started with --preview-method, so each job asks for them.
-    body: JSON.stringify({ prompt: video ? buildVideoWorkflow(settings) : buildWorkflow(settings), client_id: clientId, extra_data: { preview_method: "latent2rgb" } }),
+  if (video) await post("/free", { unload_models: true, free_memory: true }).catch(() => null);
+  // ComfyUI sends no previews unless started with --preview-method, so each job asks for them.
+  const res = await post("/prompt", {
+    prompt: video ? buildVideoWorkflow(settings) : buildWorkflow(settings), client_id: clientId, extra_data: { preview_method: "latent2rgb" },
   }).catch(() => null);
   if (!res) { toast("Can't reach the PC"); return; }
   const data = await res.json().catch(() => ({}));
@@ -910,9 +912,9 @@ async function generate() {
 async function cancelAll() {
   if (running && stopping === running) return forceStop();
   const queued = pending.filter((id) => id !== running);
-  if (queued.length) await fetch("/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ delete: queued }) });
+  if (queued.length) await post("/queue", { delete: queued });
   if (running) {
-    await fetch("/interrupt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt_id: running }) });
+    await post("/interrupt", { prompt_id: running });
     stopping = running;
     $("cancel").textContent = "Force stop";
     updateStatus("Stopping…");
@@ -1111,7 +1113,7 @@ function onBinary(buffer) {
 }
 
 async function resync() {
-  const queue = await fetch("/queue").then((r) => r.json()).catch(() => null);
+  const queue = await getJson("/queue");
   if (!queue) return;
   const runningIds = queue.queue_running.map((q) => q[1]);
   const queuedIds = queue.queue_pending.map((q) => q[1]);
@@ -1128,28 +1130,22 @@ async function resync() {
 
 /* ---------- gallery & viewer ---------- */
 
+function thumbButton(img, onclick) {
+  const btn = el("button", { type: "button", className: isVideo(img) ? "video" : "", onclick }, el("img", { loading: "lazy", src: thumbUrl(img), alt: img.filename }));
+  btn.dataset.key = imageKey(img);
+  return btn;
+}
+
 async function loadGallery() {
-  gallery = await fetch("/studio/images").then((r) => r.json()).catch(() => []);
+  gallery = await getJson("/studio/images", []);
+  showGalleryCount();
+  $("grid").replaceChildren(...(gallery.length
+    ? gallery.map((img) => thumbButton(img, () => openViewer(gallery, gallery.indexOf(img))))
+    : [el("p", { className: "empty", textContent: "Nothing here yet." })]));
+}
+
+function showGalleryCount() {
   $("gallery-count").textContent = `${gallery.length} item${gallery.length === 1 ? "" : "s"}`;
-  if (!gallery.length) {
-    const p = document.createElement("p");
-    p.className = "empty";
-    p.textContent = "Nothing here yet.";
-    $("grid").replaceChildren(p);
-    return;
-  }
-  $("grid").replaceChildren(...gallery.map((img, i) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.classList.toggle("video", Boolean(img.video));
-    const el = document.createElement("img");
-    el.loading = "lazy";
-    el.src = thumbUrl(img);
-    el.alt = img.filename;
-    btn.append(el);
-    btn.onclick = () => openViewer(gallery, i);
-    return btn;
-  }));
 }
 
 function openViewer(list, index) {
@@ -1214,35 +1210,27 @@ function step(delta) {
 
 async function deleteCurrent() {
   const img = viewer.list[viewer.index];
-  if (!img) return;
-  const res = await fetch("/studio/images/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(img),
-  }).catch(() => null);
+  const res = await post("/studio/images/delete", img).catch(() => null);
   if (!res || !res.ok) { toast("Couldn't delete the image"); return; }
-  for (const el of $("results").querySelectorAll("[data-key]")) if (el.dataset.key === imageKey(img)) el.remove();
+  const key = imageKey(img);
+  for (const el of document.querySelectorAll("#results [data-key], #grid [data-key]")) if (el.dataset.key === key) el.remove();
   viewer.list.splice(viewer.index, 1);
-  if (viewer.list !== gallery) gallery = gallery.filter((g) => !(g.filename === img.filename && g.subfolder === img.subfolder));
-  if (viewer.list !== results) results = results.filter((r) => imageKey(r) !== imageKey(img));
-  if (!$("tab-gallery").hidden) loadGallery();
+  gallery = gallery.filter((g) => imageKey(g) !== key);
+  results = results.filter((r) => imageKey(r) !== key);
+  showGalleryCount();
+  if (!gallery.length && !$("tab-gallery").hidden) loadGallery();
   toast("Deleted");
   showViewerImage();
 }
 
 async function revealCurrent() {
   const img = viewer.list[viewer.index];
-  const res = await fetch("/studio/images/reveal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename: img.filename, subfolder: img.subfolder || "" }),
-  }).catch(() => null);
+  const res = await post("/studio/images/reveal", { filename: img.filename, subfolder: img.subfolder || "" }).catch(() => null);
   toast(res && res.ok ? "Opened the folder on the PC" : "Couldn't open the folder");
 }
 
 function imageInfo(img) {
-  const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "" });
-  return fetch(`/studio/images/info?${q}`).then((r) => r.json()).catch(() => null);
+  return getJson(`/studio/images/info?${new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || "" })}`);
 }
 
 // Info lists the prompts and settings read back from the workflow saved in the file. Enhanced
@@ -1258,36 +1246,46 @@ async function showInfo() {
   $("v-info-list").replaceChildren(...rows.map(([label, value]) => el("div", {}, el("dt", { textContent: label }), el("dd", {}, value))));
 }
 
+// Saved workflows are read back by node type, following links (["id", output]) to the nodes they name.
+function inputsOf(graph, type) { return Object.values(graph).find((n) => n.class_type === type)?.inputs; }
+function linked(graph, link) { return Array.isArray(link) ? graph[link[0]] : null; }
+
 // Rapid images sample with SamplerCustomAdvanced; this reads them back under KSampler's input names
 // (no CFG, sampler or scheduler: the adapter sets those).
 function samplerInputs(graph) {
-  const nodes = Object.values(graph);
-  const find = (type) => nodes.find((n) => n.class_type === type)?.inputs;
-  const rapid = find("RapidMOSSAdapter");
-  const sampler = find("SamplerCustomAdvanced");
-  if (!rapid || !sampler) return find("KSampler");
+  const rapid = inputsOf(graph, "RapidMOSSAdapter");
+  const sampler = inputsOf(graph, "SamplerCustomAdvanced");
+  if (!rapid || !sampler) return inputsOf(graph, "KSampler");
   return { positive: graph[sampler.guider[0]].inputs.conditioning, steps: rapid.steps, seed: graph[sampler.noise[0]].inputs.noise_seed, latent_image: sampler.latent_image };
 }
+
+// With Enhance prompt on, the positive prompt comes from TextGenerate, whose input holds the typed
+// prompt (after the Krea 2 instructions).
+function typedPrompt(graph, s) {
+  const text = linked(graph, s.positive)?.inputs.text;
+  const rewriter = linked(graph, text);
+  return { rewriter, prompt: rewriter ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text };
+}
+
+function h3Node(graph) { return inputsOf(graph, "MiniMaxH3ImageToVideo") ?? inputsOf(graph, "MiniMaxH3ReferenceToVideo"); }
 
 function infoRows(info) {
   const graph = info?.prompt;
   if (!graph) return [["Settings", "This file has no saved settings."]];
-  const nodes = Object.values(graph);
-  const find = (type) => nodes.find((n) => n.class_type === type)?.inputs;
-  const linked = (link) => (Array.isArray(link) ? graph[link[0]] : null);
-  const turbo = find("LoraLoaderModelOnly") ? " · Turbo" : find("RapidMOSSAdapter") ? " · Rapid" : "";
+  const find = (type) => inputsOf(graph, type);
+  const lora = find("LoraLoaderModelOnly")?.lora_name;
+  const turbo = lora ? " · Turbo" : find("RapidMOSSAdapter") ? " · Rapid" : "";
   const size = `${info.width} × ${info.height}`;
-  const refs = find("MiniMaxH3ReferenceToVideo");
-  const h3 = find("MiniMaxH3ImageToVideo") ?? refs;
+  const h3 = h3Node(graph);
   if (h3) {
-    const fast = find("LoraLoaderModelOnly")?.lora_name === videoFiles?.fast_lora;
+    const fast = lora && lora === videoFiles?.fast_lora;
     const { items, extend } = videoMedia(graph, h3);
     const tags = referenceTags({ items });
     const role = (r) => items.filter((i) => i.role === r);
     const e = info.encoding;
     return [
       ["Prompt", h3.prompt.replace(FRAMES_LINE, "")],
-      ["Model", `MiniMax H3${refs ? " references" : ""}${fast ? " · Fast" : turbo}`],
+      ["Model", `MiniMax H3${find("MiniMaxH3ReferenceToVideo") ? " references" : ""}${fast ? " · Fast" : turbo}`],
       ["Continues", extend && mediaPath(extend)],
       ["Start image", role("start").map(mediaPath).join()],
       ["Images partway", role("at").map((i) => `${mediaPath(i)} at ${i.at} s`).join("\n")],
@@ -1301,14 +1299,13 @@ function infoRows(info) {
   }
   const s = samplerInputs(graph);
   if (!s) return [["Settings", "This file has no saved settings."]];
-  const text = linked(s.positive)?.inputs.text;
-  const rewriter = linked(text);
+  const { rewriter, prompt } = typedPrompt(graph, s);
   const unet = find("UNETLoader")?.unet_name.replace(/\.safetensors$/, "") ?? (find("MOSSImageHFLoader") && "MOSS-Image");
   const slg = find("SkipLayerGuidanceDiTSimple")?.single_layers;
   return [
-    [rewriter ? "Original prompt" : "Prompt", rewriter ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text],
+    [rewriter ? "Original prompt" : "Prompt", prompt],
     ["Enhanced prompt", rewriter && (info.enhanced_prompt ?? "Not saved in this file.")],
-    ["Negative prompt", s.cfg > 1 ? linked(s.negative)?.inputs.text : null],
+    ["Negative prompt", s.cfg > 1 ? linked(graph, s.negative)?.inputs.text : null],
     ["Model", unet && unet + turbo],
     ["Size", size],
     ["Steps", s.steps],
@@ -1334,10 +1331,10 @@ const ENCODERS = { h264_nvenc: "NVIDIA NVENC", hevc_nvenc: "NVIDIA NVENC", h264_
 function encodingRows(info) {
   const e = info?.encoding;
   if (!e) return [];
-  const nodes = Object.values(info.prompt ?? {});
-  const jxl = nodes.find((n) => n.class_type === "ApocladaSaveImageJXL")?.inputs;
+  const graph = info.prompt ?? {};
+  const jxl = inputsOf(graph, "ApocladaSaveImageJXL");
   // Videos saved before the encoder was recorded came from ComfyUI's SaveVideo, which uses x264 for H.264.
-  const encoder = e.encoder ?? (e.format === "h264" && nodes.some((n) => n.class_type === "SaveVideo") ? "libx264" : null);
+  const encoder = e.encoder ?? (e.format === "h264" && inputsOf(graph, "SaveVideo") ? "libx264" : null);
   const a = e.audio;
   return [
     ["Encoding", [FORMATS[e.format] ?? e.format, jxl && (jxl.lossless ? "Lossless" : "Lossy"), ENCODERS[encoder] ?? encoder].filter(Boolean).join(" · ")],
@@ -1350,18 +1347,14 @@ async function reuseCurrent() {
   const img = viewer.list[viewer.index];
   const info = await imageInfo(img);
   const graph = info?.prompt;
-  const h3 = graph && Object.values(graph).find((n) => n.class_type === "MiniMaxH3ImageToVideo" || n.class_type === "MiniMaxH3ReferenceToVideo");
-  if (h3) { reuseVideo(graph, h3.inputs); return; }
+  const h3 = graph && h3Node(graph);
+  if (h3) { reuseVideo(graph, h3); return; }
   const s = graph && samplerInputs(graph);
   if (!s) { toast("This image has no saved settings"); return; }
-  const node = (link) => (Array.isArray(link) ? graph[link[0]] : null);
-  // With Enhance prompt on, the positive prompt comes from TextGenerate, whose input holds the typed
-  // prompt (after the Krea 2 instructions).
-  const text = node(s.positive)?.inputs.text;
-  const rewriter = node(text);
-  settings.enhance = rewriter?.class_type === "TextGenerate";
-  settings.prompt = (settings.enhance ? rewriter.inputs.prompt.replace(KREA2_ENHANCE, "") : text) ?? settings.prompt;
-  settings.negative = node(s.negative)?.inputs.text ?? "";
+  const { rewriter, prompt } = typedPrompt(graph, s);
+  settings.enhance = Boolean(rewriter);
+  settings.prompt = prompt ?? settings.prompt;
+  settings.negative = linked(graph, s.negative)?.inputs.text ?? "";
   settings.steps = s.steps;
   // Rapid images have no CFG, sampler or scheduler; the current ones stay.
   settings.cfg = s.cfg ?? settings.cfg;
@@ -1369,41 +1362,47 @@ async function reuseCurrent() {
   settings.scheduler = s.scheduler ?? settings.scheduler;
   settings.seed = s.seed;
   settings.randomSeed = false;
-  const latent = node(s.latent_image)?.inputs;
+  const latent = linked(graph, s.latent_image)?.inputs;
   if (latent) {
-    const ratio = Math.log(latent.width / latent.height);
-    settings.aspect = ASPECTS.reduce((best, a) => (Math.abs(Math.log(a[1] / a[2]) - ratio) < Math.abs(Math.log(best[1] / best[2]) - ratio) ? a : best))[0];
-    const mp = (latent.width * latent.height) / (1024 * 1024);
-    settings.mp = MEGAPIXELS.reduce((best, m) => (Math.abs(m - mp) < Math.abs(best - mp) ? m : best));
+    settings.aspect = nearestAspect(latent.width, latent.height);
+    settings.mp = nearest(MEGAPIXELS, latent.width * latent.height);
     settings.batch = latent.batch_size || 1;
   }
-  const turbo = Object.values(graph).some((n) => n.class_type === "LoraLoaderModelOnly");
+  const turbo = Boolean(inputsOf(graph, "LoraLoaderModelOnly"));
   if (turbo && !turboLora) { toast("This image used Turbo mode, but its LoRA is missing on the PC"); return; }
-  const rapid = Object.values(graph).some((n) => n.class_type === "RapidMOSSAdapter");
+  const rapid = Boolean(inputsOf(graph, "RapidMOSSAdapter"));
   if (rapid && !rapidAdapter) { toast("This image used Rapid mode, which needs the rapid-moss node and adapter on the PC"); return; }
   settings.mode = rapid ? "rapid" : turbo ? "turbo" : "full";
-  settings.easyCache = Object.values(graph).some((n) => n.class_type === "EasyCache");
-  settings.slgLayer = "";
-  for (const n of Object.values(graph)) {
-    if (n.class_type === "ModelSamplingSD3" || n.class_type === "ModelSamplingAuraFlow") settings.shift = n.inputs.shift;
-    if (n.class_type === "SkipLayerGuidanceDiTSimple") settings.slgLayer = String(n.inputs.single_layers).trim();
-    // Images from before the switch to native files used the moss-image node's full model folder.
-    if (n.class_type === "MOSSImageHFLoader") {
-      const m = models.find((x) => x.family === "moss");
-      if (m) settings.model = m.name;
-    }
-    if (n.class_type === "UNETLoader") {
-      const m = models.find((x) => x.unet === n.inputs.unet_name);
-      if (m) settings.model = m.name;
-      else toast("This image used a model that is no longer on the PC");
-    }
-  }
+  settings.easyCache = Boolean(inputsOf(graph, "EasyCache"));
+  settings.shift = (inputsOf(graph, "ModelSamplingAuraFlow") ?? inputsOf(graph, "ModelSamplingSD3"))?.shift ?? settings.shift;
+  const slg = inputsOf(graph, "SkipLayerGuidanceDiTSimple");
+  settings.slgLayer = slg ? String(slg.single_layers).trim() : "";
+  // Images from before the switch to native files used the moss-image node's full model folder.
+  const unet = inputsOf(graph, "UNETLoader")?.unet_name;
+  const model = inputsOf(graph, "MOSSImageHFLoader") ? models.find((m) => m.family === "moss") : models.find((m) => m.unet === unet);
+  if (model) settings.model = model.name;
+  else if (unet) toast("This image used a model that is no longer on the PC");
   if (models.find((m) => m.name === settings.model)?.family === "krea2") settings.mode = "krea2";
-  settings.kind = "image";
+  toCreate("image", "Settings loaded with the same seed. Turn on “Randomize” for variations.");
+}
+
+// The listed megapixel size nearest a pixel count, and the listed shape nearest a width and height.
+function nearest(list, pixels) {
+  const mp = pixels / (1024 * 1024);
+  return list.reduce((best, m) => (Math.abs(m - mp) < Math.abs(best - mp) ? m : best));
+}
+function nearestAspect(width, height) {
+  const off = (a) => Math.abs(Math.log(a[1] / a[2] / (width / height)));
+  return ASPECTS.reduce((best, a) => (off(a) < off(best) ? a : best))[0];
+}
+
+// Opens Create on images or video with what the viewer just loaded into it.
+function toCreate(kind, message) {
+  settings.kind = kind;
   syncForm();
   closeViewer();
   selectTab("create");
-  toast("Settings loaded with the same seed. Turn on “Randomize” for variations.");
+  toast(message);
 }
 
 // Reads a video's images, references and extended video back from its workflow, in the form
@@ -1442,27 +1441,19 @@ function reuseVideo(graph, h3) {
   const { items, extend } = videoMedia(graph, h3);
   if (items.some((i) => i.role === "ref") && !videoFiles.ref_unet) { toast("This video used references, which need the MiniMax H3 references pack"); return; }
   const v = settings.video;
-  const nodes = Object.values(graph);
   v.prompt = h3.prompt.replace(FRAMES_LINE, "");
   v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24) - (extend ? 1 : 0)));
-  const lora = nodes.find((n) => n.class_type === "LoraLoaderModelOnly")?.inputs.lora_name;
+  const lora = inputsOf(graph, "LoraLoaderModelOnly")?.lora_name;
   v.mode = !lora ? "quality" : lora === videoFiles.fast_lora ? "fast" : "turbo";
-  const scheduler = nodes.find((n) => n.class_type === "BasicScheduler");
-  if (!lora && scheduler) v.steps = scheduler.inputs.steps;
-  const mp = (h3.width * h3.height) / (1024 * 1024);
-  v.mp = VIDEO_MP.reduce((best, m) => (Math.abs(m - mp) < Math.abs(best - mp) ? m : best));
+  const scheduler = inputsOf(graph, "BasicScheduler");
+  if (!lora && scheduler) v.steps = scheduler.steps;
+  v.mp = nearest(VIDEO_MP, h3.width * h3.height);
   v.items = items;
   v.extend = extend;
-  const ratio = Math.log(h3.width / h3.height);
-  v.aspect = ASPECTS.reduce((best, a) => (Math.abs(Math.log(a[1] / a[2]) - ratio) < Math.abs(Math.log(best[1] / best[2]) - ratio) ? a : best))[0];
-  const noise = nodes.find((n) => n.class_type === "RandomNoise");
-  if (noise) settings.seed = noise.inputs.noise_seed;
+  v.aspect = nearestAspect(h3.width, h3.height);
+  settings.seed = inputsOf(graph, "RandomNoise")?.noise_seed ?? settings.seed;
   settings.randomSeed = false;
-  settings.kind = "video";
-  syncForm();
-  closeViewer();
-  selectTab("create");
-  toast("Settings loaded with the same seed. Turn on “Randomize” for variations.");
+  toCreate("video", "Settings loaded with the same seed. Turn on “Randomize” for variations.");
 }
 
 // Uploads a gallery image to the video's images. JPEG XL goes as the PC's PNG copy so the image
@@ -1480,27 +1471,19 @@ async function pickMedia() {
   const refPack = Boolean(videoFiles?.ref_unet);
   const videos = refPack && v.items.filter((i) => i.kind === "video").length < 3;
   $("media-file").accept = refPack ? "image/*,audio/*" : "image/*";
-  const list = (await fetch("/studio/images").then((r) => r.json()).catch(() => [])).filter((img) => videos || !isVideo(img));
-  $("picker-grid").replaceChildren(...(list.length ? list.map((img) => el("button", {
-    type: "button", className: isVideo(img) ? "video" : "",
-    onclick: async () => {
-      $("picker").close();
-      const item = isVideo(img) ? addMedia({ kind: "video", name: img.filename, subfolder: img.subfolder || "" }) : await addFromGallery(img);
-      if (item?.kind === "image") openItem(item);
-    },
-  }, el("img", { loading: "lazy", src: thumbUrl(img), alt: img.filename }))) : [el("p", { className: "empty", textContent: "Nothing in the gallery yet." })]));
+  const list = (await getJson("/studio/images", [])).filter((img) => videos || !isVideo(img));
+  $("picker-grid").replaceChildren(...(list.length ? list.map((img) => thumbButton(img, async () => {
+    $("picker").close();
+    const item = isVideo(img) ? addMedia({ kind: "video", name: img.filename, subfolder: img.subfolder || "" }) : await addFromGallery(img);
+    if (item?.kind === "image") openItem(item);
+  })) : [el("p", { className: "empty", textContent: "Nothing in the gallery yet." })]));
   $("picker").showModal();
   $("picker").scrollTop = 0;
 }
 
 // Sends the viewer's image to Video mode as the start frame.
 async function animateCurrent() {
-  if (!(await addFromGallery(viewer.list[viewer.index], "start"))) return;
-  settings.kind = "video";
-  syncForm();
-  closeViewer();
-  selectTab("create");
-  toast("Image set as the video's start frame. Describe the motion and press Generate.");
+  if (await addFromGallery(viewer.list[viewer.index], "start")) toCreate("video", "Image set as the video's start frame. Describe the motion and press Generate.");
 }
 
 // Sends the viewer's video to Video mode to be continued. The new part replaces the old video's last
@@ -1515,11 +1498,7 @@ async function extendCurrent() {
     // The video it continues is where it starts.
     v.items = v.items.filter((i) => i.role !== "start");
   });
-  settings.kind = "video";
-  syncForm();
-  closeViewer();
-  selectTab("create");
-  toast("Describe what happens next and press Generate.");
+  toCreate("video", "Describe what happens next and press Generate.");
 }
 
 function bindViewer() {
@@ -1560,16 +1539,11 @@ let downloading = false;
 
 function gb(bytes) { return `${(bytes / 1e9).toFixed(1)} GB`; }
 
-function el(tag, props = {}, ...children) {
-  const node = Object.assign(document.createElement(tag), props);
-  node.append(...children.filter((c) => c !== null && c !== false));
-  return node;
-}
-
 // Polls while a download runs, on any tab, so new models show up in Create as soon as they land.
 async function loadSetup() {
+  const setup = await getJson("/studio/setup");
+  // Cleared after the wait, so overlapping calls leave one poll running rather than one each.
   clearTimeout(setupTimer);
-  const setup = await fetch("/studio/setup").then((r) => r.json()).catch(() => null);
   if (!setup) return;
   const dl = setup.download;
   const active = Boolean(dl && !dl.error);
@@ -1608,9 +1582,7 @@ function renderPack(p, dl, active) {
 }
 
 async function setupAction(action, pack) {
-  const res = await fetch(`/studio/setup/${action}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pack }),
-  }).catch(() => null);
+  const res = await post(`/studio/setup/${action}`, { pack }).catch(() => null);
   if (!res) toast("Can't reach the PC");
   else if (!res.ok) toast((await res.json().catch(() => ({}))).error || "That didn't work");
   if (res?.ok && action === "download") downloading = true;
@@ -1619,9 +1591,7 @@ async function setupAction(action, pack) {
 
 // Sizes are from a 1 MP MOSS image: PNG 1.4 MB, lossless JPEG XL 0.9 MB, lossy (libjxl distance 1) 0.15 MB.
 async function loadPrefs(change) {
-  const p = await fetch("/studio/prefs", change && {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change),
-  }).then((r) => r.json()).catch(() => null);
+  const p = await (change ? post("/studio/prefs", change) : fetch("/studio/prefs")).then((r) => r.json()).catch(() => null);
   if (!p) { toast("Can't reach the PC"); return; }
   prefs = p;
   const radio = (label, detail, checked, change, disabled = false) => {
@@ -1635,7 +1605,7 @@ async function loadPrefs(change) {
     g.setAttribute("role", "radiogroup");
     return g;
   };
-  const jxl = p.image_format === "jxl" && p.jxl_available;
+  const jxl = p.image_format === "jxl";
   $("image-format").replaceChildren(...[
     group(
       radio("PNG", "Works everywhere", !jxl, { image_format: "png" }),
@@ -1673,7 +1643,7 @@ async function loadPrefs(change) {
 }
 
 async function loadUpdates(check) {
-  const u = await fetch(`/studio/update${check ? "?check=1" : ""}`).then((r) => r.json()).catch(() => null);
+  const u = await getJson(`/studio/update${check ? "?check=1" : ""}`);
   if (!u) return;
   document.querySelector(".tabs [data-tab=setup]").classList.toggle("badge", u.behind > 0 || !u.comfyui_ok);
   const status = !u.source
@@ -1698,7 +1668,7 @@ async function runUpdate() {
   toast("Updated. Restarting ComfyUI…");
   // The page reloads once the restarted server answers, picking up the new version.
   await new Promise((r) => setTimeout(r, 4000));
-  while (!(await fetch("/studio/update").then((r) => r.ok).catch(() => false))) await new Promise((r) => setTimeout(r, 2000));
+  while (!(await fetch("/queue").then((r) => r.ok).catch(() => false))) await new Promise((r) => setTimeout(r, 2000));
   location.reload();
 }
 
@@ -1733,7 +1703,7 @@ async function init() {
     for (const v of document.querySelectorAll("video")) if (v !== e.target) v.pause();
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
-  fetch("/studio/host").then((r) => r.json()).then(({ host }) => { $("v-reveal").hidden = !host; }).catch(() => {});
+  getJson("/studio/host", {}).then(({ host }) => { $("v-reveal").hidden = !host; });
   jxlShown = await imageSize(JXL_PROBE).then(() => true, () => false);
   await loadModels();
   // A fresh install has nothing to generate with yet, so it opens on Setup.
@@ -1745,10 +1715,10 @@ async function init() {
 async function loadModels() {
   let ksampler;
   [models, { lora: turboLora, rapid: rapidAdapter }, videoFiles, ksampler] = await Promise.all([
-    fetch("/studio/models").then((r) => r.json()).catch(() => []),
-    fetch("/studio/turbo").then((r) => r.json()).catch(() => ({ lora: null, rapid: null })),
-    fetch("/studio/video").then((r) => r.json()).catch(() => null),
-    fetch("/object_info/KSampler").then((r) => r.json()).catch(() => null),
+    getJson("/studio/models", []),
+    getJson("/studio/turbo", { lora: null, rapid: null }),
+    getJson("/studio/video"),
+    getJson("/object_info/KSampler"),
   ]);
   // The lists come from ComfyUI, so samplers added by other custom nodes show up too.
   const { sampler_name, scheduler } = ksampler?.KSampler.input.required ?? {};

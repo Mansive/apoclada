@@ -4,6 +4,7 @@ Generation goes through ComfyUI's own /prompt, /ws, /view and /interrupt APIs; t
 the page itself, gallery listing, metadata and delete, model downloads and self-updates.
 """
 import asyncio
+import functools
 import json
 import math
 import mimetypes
@@ -42,6 +43,7 @@ PLUGIN_DIR = os.path.dirname(__file__)
 WEB_ROOT = os.path.join(PLUGIN_DIR, "web")
 IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg", ".jxl"}
 VIDEO_EXTS = {".mp4", ".webm", ".mov"}
+MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 # Krea 2 support and the native MOSS-Image and MiniMax H3 nodes arrived in ComfyUI 0.41.
 COMFYUI_MIN = "0.41.0"
 
@@ -222,6 +224,8 @@ VIDEO_ENCODERS = {
 working_encoders = None
 
 
+# Opening a hardware encoder takes a moment, so each size is tried once.
+@functools.cache
 def encoder_opens(codec, encoder, width, height):
     name, options = VIDEO_ENCODERS[codec][encoder]
     try:
@@ -272,7 +276,7 @@ class SaveVideoMP4:
         file = f"{filename}_{counter:05}_.mp4"
         with av.open(os.path.join(full_output_folder, file), "w", format="mp4", options={"movflags": "use_metadata_tags+faststart"}) as out:
             if not args.disable_metadata:
-                for key, value in {**extra, **({"prompt": prompt} if prompt is not None else {})}.items():
+                for key, value in ({**extra, "prompt": prompt} if prompt is not None else extra).items():
                     out.metadata[key] = json.dumps(value)
             # Info shows the encoder that actually ran, which can differ from the one asked for.
             out.metadata["video_encoder"] = name
@@ -325,7 +329,8 @@ async def prefs_response(prefs):
     encoders = await asyncio.to_thread(working_video_encoders)
     codec_encoders = encoders[prefs["video_codec"]]
     encoder = prefs["video_encoder"] if prefs["video_encoder"] in codec_encoders else next(iter(codec_encoders), None)
-    return web.json_response({**prefs, "video_encoder": encoder, "jxl_available": pillow_jxl is not None, "video_encoders": encoders})
+    image_format = prefs["image_format"] if pillow_jxl else "png"
+    return web.json_response({**prefs, "image_format": image_format, "video_encoder": encoder, "jxl_available": pillow_jxl is not None, "video_encoders": encoders})
 
 
 @routes.get("/studio/prefs")
@@ -387,10 +392,11 @@ PromptServer.instance.send_json = copy_to_studio_clients(PromptServer.instance.s
 PromptServer.instance.send_bytes = copy_to_studio_clients(PromptServer.instance.send_bytes)
 
 
-def output_file(subfolder, filename):
+# Takes the request's query or posted JSON, either of which names the file by subfolder and filename.
+def output_file(params):
     output_dir = os.path.abspath(folder_paths.get_output_directory())
-    path = os.path.abspath(os.path.join(output_dir, subfolder, filename))
-    if os.path.commonpath((path, output_dir)) != output_dir or os.path.splitext(path)[1].lower() not in IMAGE_EXTS | VIDEO_EXTS:
+    path = os.path.abspath(os.path.join(output_dir, params.get("subfolder", ""), params.get("filename", "")))
+    if os.path.commonpath((path, output_dir)) != output_dir or os.path.splitext(path)[1].lower() not in MEDIA_EXTS:
         raise web.HTTPForbidden()
     if not os.path.isfile(path):
         raise web.HTTPNotFound()
@@ -439,12 +445,13 @@ download = None
 def pack_status(pack):
     missing = [f for f in pack["files"] if not have(f)]
     manual = pack.get("manual")
+    found = bool(manual and krea2_models())
     return {
         "id": pack["id"], "name": pack["name"], "about": pack["about"],
-        "manual": manual and {**manual, "found": bool(krea2_models())},
+        "manual": manual and {**manual, "found": found},
         "size": sum(FILES[f][2] for f in pack["files"]),
         "missing": sum(FILES[f][2] for f in missing),
-        "installed": not missing and (not manual or bool(krea2_models())),
+        "installed": not missing and (not manual or found),
     }
 
 
@@ -481,10 +488,9 @@ async def download_pack(pack):
 
 async def run_download(pack):
     global download
+    # A cancel isn't an Exception; Stop has already cleared the state.
     try:
         await download_pack(pack)
-        download = None
-    except asyncio.CancelledError:
         download = None
     except Exception as e:
         download.update(error=str(e) or type(e).__name__, task=None)
@@ -539,14 +545,14 @@ def version_tuple(version):
 
 @routes.get("/studio/update")
 async def studio_update_check(request):
-    _, version = await git("log", "-1", "--format=%h · %cs")
+    log_code, version = await git("log", "-1", "--format=%h · %cs")
     code, upstream = await git("rev-parse", "--abbrev-ref", "@{upstream}")
     if code == 0 and (request.rel_url.query.get("check") or time.time() - update_check["time"] > 3600):
         if (await git("fetch", "--quiet"))[0] == 0:
             _, behind = await git("rev-list", "--count", "HEAD..@{upstream}")
             update_check.update(time=time.time(), behind=int(behind or 0))
     return web.json_response({
-        "version": version if version and "fatal" not in version else None,
+        "version": version if log_code == 0 else None,
         "source": upstream if code == 0 else None,
         "behind": update_check["behind"] if code == 0 else 0,
         "comfyui": COMFYUI_VERSION, "comfyui_min": COMFYUI_MIN,
@@ -568,22 +574,27 @@ def is_video(path):
     return os.path.splitext(path)[1].lower() in VIDEO_EXTS
 
 
-@routes.get("/studio/images")
-async def studio_images(request):
+# The gallery, thumbnails and PNG copies read and decode files, so they run in a thread to keep
+# ComfyUI's progress and previews flowing while the iPad loads a page of them.
+def list_media():
     output_dir = folder_paths.get_output_directory()
     images = []
     for dirpath, _, files in os.walk(output_dir):
         subfolder = os.path.relpath(dirpath, output_dir).replace(os.sep, "/")
         for filename in files:
-            if os.path.splitext(filename)[1].lower() in IMAGE_EXTS | VIDEO_EXTS:
+            if os.path.splitext(filename)[1].lower() in MEDIA_EXTS:
                 images.append({
                     "filename": filename,
                     "subfolder": "" if subfolder == "." else subfolder,
                     "mtime": os.path.getmtime(os.path.join(dirpath, filename)),
-                    "video": is_video(filename),
                 })
     images.sort(key=lambda i: i["mtime"], reverse=True)
-    return web.json_response(images)
+    return images
+
+
+@routes.get("/studio/images")
+async def studio_images(request):
+    return web.json_response(await asyncio.to_thread(list_media))
 
 
 def first_frame(path):
@@ -591,30 +602,38 @@ def first_frame(path):
         return next(container.decode(video=0)).to_image()
 
 
-@routes.get("/studio/images/thumb")
-async def studio_image_thumb(request):
-    path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
+def thumbnail(path):
     with (first_frame(path) if is_video(path) else Image.open(path)) as img:
         img.thumbnail((384, 384))
         buffer = BytesIO()
         img.convert("RGB").save(buffer, format="webp", quality=60)
-    return web.Response(body=buffer.getvalue(), content_type="image/webp", headers={"Cache-Control": "max-age=86400"})
+    return buffer.getvalue()
+
+
+def png_copy(path):
+    with Image.open(path) as img:
+        buffer = BytesIO()
+        img.save(buffer, format="png", compress_level=1)
+    return buffer.getvalue()
+
+
+@routes.get("/studio/images/thumb")
+async def studio_image_thumb(request):
+    body = await asyncio.to_thread(thumbnail, output_file(request.rel_url.query))
+    return web.Response(body=body, content_type="image/webp", headers={"Cache-Control": "max-age=86400"})
 
 
 # A PNG copy of a saved image, for browsers that can't show JPEG XL and for Animate, whose start
 # image has to load in the browser and in ComfyUI's LoadImage.
 @routes.get("/studio/images/png")
 async def studio_image_png(request):
-    path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
-    with Image.open(path) as img:
-        buffer = BytesIO()
-        img.save(buffer, format="png", compress_level=1)
-    return web.Response(body=buffer.getvalue(), content_type="image/png", headers={"Cache-Control": "max-age=86400"})
+    body = await asyncio.to_thread(png_copy, output_file(request.rel_url.query))
+    return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
 
 @routes.get("/studio/images/info")
 async def studio_image_info(request):
-    path = output_file(request.rel_url.query.get("subfolder", ""), request.rel_url.query.get("filename", ""))
+    path = output_file(request.rel_url.query)
     if is_video(path):
         with av.open(path) as container:
             prompt, seconds = container.metadata.get("prompt"), container.metadata.get("generation_time")
@@ -634,7 +653,7 @@ async def studio_image_info(request):
             if prompt is None:
                 # JPEG XL keeps them in Exif: the workflow in Model, extra_pnginfo counting down from Make.
                 exif = img.getexif()
-                tags = {v.split(":", 1)[0]: v.split(":", 1)[1] for t in range(0x0110, 0, -1) if isinstance(v := exif.get(t), str) and ":" in v}
+                tags = dict(v.split(":", 1) for t in range(0x0110, 0, -1) if isinstance(v := exif.get(t), str) and ":" in v)
                 prompt, enhanced, seconds = tags.get("prompt"), tags.get("enhanced_prompt"), tags.get("generation_time")
     return web.json_response({"prompt": json.loads(prompt) if prompt else None, "enhanced_prompt": json.loads(enhanced) if enhanced else None,
                               "generation_time": json.loads(seconds) if seconds else None, "width": width, "height": height, "encoding": encoding, "bytes": os.path.getsize(path)})
@@ -644,7 +663,8 @@ async def studio_image_info(request):
 # whether it opened the site through localhost or one of the PC's network addresses.
 @routes.get("/studio/host")
 async def studio_host(request):
-    addresses = {"127.0.0.1", "::1", *(info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None))}
+    infos = await asyncio.get_running_loop().getaddrinfo(socket.gethostname(), None)
+    addresses = {"127.0.0.1", "::1", *(info[4][0] for info in infos)}
     return web.json_response({"host": request.remote in addresses})
 
 
@@ -652,7 +672,7 @@ async def studio_host(request):
 @routes.post("/studio/images/reveal")
 async def studio_image_reveal(request):
     data = await request.json()
-    path = output_file(data.get("subfolder", ""), data.get("filename", ""))
+    path = output_file(data)
     subprocess.Popen(["explorer", f"/select,{path}"])
     return web.json_response({"revealed": data.get("filename")})
 
@@ -687,5 +707,5 @@ async def studio_restart(request):
 @routes.post("/studio/images/delete")
 async def studio_image_delete(request):
     data = await request.json()
-    os.remove(output_file(data.get("subfolder", ""), data.get("filename", "")))
+    os.remove(output_file(data))
     return web.json_response({"deleted": data.get("filename")})
