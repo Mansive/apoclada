@@ -54,7 +54,9 @@ folder_paths.add_model_folder_path("rapid_moss", os.path.join(folder_paths.model
 FILES = {
     "moss_image_sft_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors", 5413698958),
     "qwen3.5_9b_int8_convrot.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors", 9748121532),
-    "flux2-vae.safetensors": ("vae", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors", 336211292),
+    # MOSS-Image's own release decodes with FLUX.2's small decoder, which the MOSS team says avoids
+    # odd spots and artifacts. It also decodes about 40% faster here than Comfy-Org's full flux2-vae.
+    "full_encoder_small_decoder.safetensors": ("vae", f"{HF}/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors", 249519092),
     # lodestones/MOSS-Image-SFT-8-steps-dmd: 8-step, CFG-free distillation LoRA for MOSS-Image-SFT.
     "moss-image-sft-8step-dmd.safetensors": ("loras", f"{HF}/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors", 1189176800),
     # darask0/MOSS-Image_4-step_adapter_lora (rapid-moss): 4-step adapter, run by its own custom node.
@@ -68,7 +70,7 @@ FILES = {
     "minimax_h3_audio_vae_fp32.safetensors": ("vae", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors", 605254808),
     "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1956193000),
 }
-MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "flux2-vae.safetensors"}
+MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "full_encoder_small_decoder.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
 RAPID_FILES = [name for name in FILES if name.startswith(f"{RAPID_ADAPTER}/")]
 # Krea 2 and its fine-tunes (e.g. lodestones' Kroma) run on ComfyUI's native nodes with the
