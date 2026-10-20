@@ -54,9 +54,9 @@ folder_paths.add_model_folder_path("rapid_moss", os.path.join(folder_paths.model
 FILES = {
     "moss_image_sft_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors", 5413698958),
     "qwen3.5_9b_int8_convrot.safetensors": ("text_encoders", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors", 9748121532),
-    # MOSS-Image's own release decodes with FLUX.2's small decoder, which the MOSS team says avoids
-    # odd spots and artifacts. It also decodes about 40% faster here than Comfy-Org's full flux2-vae.
-    "full_encoder_small_decoder.safetensors": ("vae", f"{HF}/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors", 249519092),
+    # FLUX.2's small decoder, as in MOSS-Image's own release and ComfyUI's MOSS template. The MOSS team
+    # says it avoids odd spots and artifacts, and it decodes about 40% faster here than the full flux2-vae.
+    "flux2-vae_small.safetensors": ("vae", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae_small.safetensors", 249521340),
     # lodestones/MOSS-Image-SFT-8-steps-dmd: 8-step, CFG-free distillation LoRA for MOSS-Image-SFT.
     "moss-image-sft-8step-dmd.safetensors": ("loras", f"{HF}/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors", 1189176800),
     # darask0/MOSS-Image_4-step_adapter_lora (rapid-moss): 4-step adapter, run by its own custom node.
@@ -74,7 +74,7 @@ FILES = {
     # Kijai/MiniMax-H3-experimental: ZhengmingYu's DMAD 4-step distillation LoRA, rank-reduced.
     "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors": ("loras", f"{HF}/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 366647000),
 }
-MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "full_encoder_small_decoder.safetensors"}
+MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_int8_convrot.safetensors", "vae": "flux2-vae_small.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
 RAPID_FILES = [name for name in FILES if name.startswith(f"{RAPID_ADAPTER}/")]
 # Krea 2 and its fine-tunes (e.g. lodestones' Kroma) run on ComfyUI's native nodes with the

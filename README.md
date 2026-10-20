@@ -75,14 +75,14 @@ Studio differs and why. Speed figures were measured on an RX 9070.
 |---|---|---|
 | Diffusion model | `moss_image_sft_int8_convrot` | Comfy-Org/MOSS-Image |
 | Text encoder (Qwen3.5 9B) | `qwen3.5_9b_int8_convrot` | Comfy-Org/MOSS-Image |
-| VAE | `full_encoder_small_decoder` | black-forest-labs/FLUX.2-small-decoder |
+| VAE | `flux2-vae_small` | Comfy-Org/MOSS-Image |
 | Turbo LoRA (8 steps) | `moss-image-sft-8step-dmd` | lodestones/MOSS-Image-SFT-8-steps-dmd |
 | Rapid adapter (4 steps) | `rapid-moss-4step` (3 files) | darask0/MOSS-Image_4-step_adapter_lora |
 
 - **VAE:** Studio started with Comfy-Org's full `flux2-vae`. The MOSS team said their own release
   decodes with FLUX.2's small decoder because it avoids odd spots and artifacts. It also decodes
   about 40% faster, with no visible difference. ComfyUI's MOSS template has since moved to the same
-  small decoder (`flux2-vae_small`, a copy of Black Forest Labs' file).
+  small decoder, and Studio now uses the template's copy of Black Forest Labs' file.
 - **Diffusion model:** int8, like the template. It runs about a third faster than the bf16 version.
 - **Text encoder:** Studio uses the int8 version. The template uses the smaller 4-bit
   `qwen3.5_9b_w4a8_gptq` (7.3 GB instead of 9.7 GB). The two haven't been compared in Studio.
