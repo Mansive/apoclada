@@ -83,7 +83,7 @@ const MODES = {
   // darask0's rapid-moss adapter brings its own sampler and sigmas, so only the step count applies.
   rapid: {
     tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
-    sizeNote: "Trained at about 1 MP. Other sizes are untested.", cfgNote: "",
+    ...MOSS_NOTES, sizeNote: "Trained at about 1 MP. Other sizes are untested.",
     label: "Rapid", unused: distilledUnused("Rapid", "shift", "sampler", "scheduler"), build: buildRapidWorkflow,
     file: () => rapidAdapter, node: "RapidMOSSAdapter", missing: "This image used Rapid mode, which needs the rapid-moss node and adapter on the PC",
   },
