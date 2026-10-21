@@ -1307,22 +1307,24 @@ function peekAt(delta) {
 
 function shown() { return $("v-video").hidden ? $("v-img") : $("v-video"); }
 
-let sliding = false;
+// The slide playing, if any. Its animations are dropped once it has played.
+let sliding = null;
 
-// Slides the picture from `dx` off the screen, bringing in the neighbour a page width behind it, or
-// back to its place.
+// Slides the picture from `dx` off the screen, bringing in the neighbour (if any) a page width behind
+// it, or back to its place.
 async function slide(delta, peek, dx, turnPage) {
-  sliding = true;
   const cur = shown();
   const page = cur.parentNode.clientWidth * delta;
   const to = turnPage ? -page : 0;
-  const timing = { duration: 450, easing: "cubic-bezier(.2, .7, .3, 1)" };
-  cur.style.transform = `translateX(${to}px)`;
-  peek.style.transform = `translateX(${to + page}px)`;
-  await Promise.all([
-    cur.animate({ transform: [`translateX(${dx}px)`, `translateX(${to}px)`] }, timing).finished,
-    peek.animate({ transform: [`translateX(${dx + page}px)`, `translateX(${to + page}px)`] }, timing).finished,
-  ]);
+  const move = (el, from, to) => {
+    el.style.transform = `translateX(${to}px)`;
+    return el.animate({ transform: [`translateX(${from}px)`, `translateX(${to}px)`] }, { duration: 450, easing: "cubic-bezier(.2, .7, .3, 1)" });
+  };
+  const anims = peek ? [move(cur, dx, to), move(peek, dx + page, to + page)] : [move(cur, dx, 0)];
+  sliding = { cur, peek, delta, anims };
+  // A touch can catch the slide and carry on from there as a drag, which cancels it.
+  try { await Promise.all(anims.map((a) => a.finished)); } catch { return; }
+  sliding.anims = null;
   if (turnPage) {
     step(delta);
     // The neighbour's copy covers the real picture until it has loaded, so nothing blinks.
@@ -1330,8 +1332,8 @@ async function slide(delta, peek, dx, turnPage) {
     if (img === $("v-img")) await new Promise((done) => { img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); });
   }
   cur.style.transform = "";
-  peek.remove();
-  sliding = false;
+  peek?.remove();
+  sliding = null;
 }
 
 // Prev, Next and the arrow keys turn the page with the same slide a swipe ends in.
@@ -1650,8 +1652,10 @@ function bindViewer() {
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
   const area = $("viewer");
   // A tap on the picture hides or shows the buttons; one on the black space around it closes the
-  // viewer, like Close does.
+  // viewer, like Close does. A tap that catches a slide does neither.
+  let caught = false;
   area.addEventListener("click", (e) => {
+    if (caught) return;
     if (e.target === $("v-img")) setBare(!area.classList.contains("bare"));
     else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
   });
@@ -1677,43 +1681,63 @@ function bindViewer() {
     if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
   });
   // A swipe drags the picture with its neighbour beside it. Letting go after 60 px, or after a
-  // quick flick, turns the page; otherwise it slides back. Past the first or last picture
-  // it drags at a third of the finger's pace. Swipes on the video would fight with scrubbing its
-  // timeline, and swipes in Info with selecting its text, so neither moves anything.
+  // quick flick, slides on the way it moved; otherwise it slides back. A touch during a slide catches
+  // it where it is: holding pauses it, swiping drags on from there, and letting go without a swipe
+  // settles on the nearer picture. Past the first or last picture it drags at a third of the finger's
+  // pace. Swipes on the video would fight with scrubbing its timeline, and swipes in Info with
+  // selecting its text, so neither moves anything.
   const box = area.querySelector(".viewer-img");
   let drag = null;
+  const nearer = () => Math.abs(drag.dx) > box.clientWidth / 2;
   const letGo = (turnPage) => {
-    const { cur, dx, delta, peek } = drag;
+    const { dx, delta, peek } = drag;
     drag = null;
-    if (peek) slide(delta, peek, dx, turnPage);
-    else {
-      cur.style.transform = "";
-      if (dx) cur.animate({ transform: [`translateX(${dx}px)`, "none"] }, { duration: 250, easing: "ease-out" });
-    }
+    if (peek || dx) slide(delta, peek, dx, turnPage && Boolean(peek));
   };
   area.addEventListener("touchstart", (e) => {
-    if (drag) letGo(false);
-    if (e.touches.length === 1 && !sliding && !e.target.closest("video, .viewer-info")) drag = { cur: shown(), x: e.touches[0].clientX, time: e.timeStamp, dx: 0 };
+    if (drag) letGo(nearer());
+    caught = false;
+    if (e.touches.length !== 1 || e.target.closest("video, .viewer-info")) return;
+    let dx = 0, delta = 0, peek = null;
+    if (sliding) {
+      // After a turn, the new picture takes a moment to load, and can't be caught.
+      if (!sliding.anims) return;
+      ({ delta, peek } = sliding);
+      dx = new DOMMatrix(getComputedStyle(sliding.cur).transform).m41;
+      for (const a of sliding.anims) a.cancel();
+      sliding = null;
+      shown().style.transform = `translateX(${dx}px)`;
+      if (peek) peek.style.transform = `translateX(${dx + delta * box.clientWidth}px)`;
+      caught = true;
+    }
+    const raw = peek || !dx ? dx : dx * 3;
+    drag = { x: e.touches[0].clientX - raw, from: raw, raw, time: e.timeStamp, dx, delta, peek };
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
     if (!drag) return;
-    const dx = e.touches[0].clientX - drag.x;
+    const raw = e.touches[0].clientX - drag.x;
     // Small movements are taps, which hide or show the buttons.
-    if (!drag.delta && Math.abs(dx) < 10) return;
-    const delta = dx < 0 ? 1 : -1;
+    if (!drag.moved && Math.abs(raw - drag.from) < 10) return;
+    drag.moved = true;
+    drag.raw = raw;
+    const delta = raw < 0 ? 1 : -1;
     if (delta !== drag.delta) {
       drag.peek?.remove();
       drag.delta = delta;
       drag.peek = peekAt(delta);
     }
-    drag.dx = drag.peek ? dx : dx / 3;
-    drag.cur.style.transform = `translateX(${drag.dx}px)`;
+    // The neighbour stops in the middle; the one past it isn't laid out.
+    drag.dx = drag.peek ? Math.max(-box.clientWidth, Math.min(box.clientWidth, raw)) : raw / 3;
+    shown().style.transform = `translateX(${drag.dx}px)`;
     if (drag.peek) drag.peek.style.transform = `translateX(${drag.dx + delta * box.clientWidth}px)`;
   }, { passive: true });
   area.addEventListener("touchend", (e) => {
-    if (drag) letGo(Math.abs(drag.dx) > 60 || (Math.abs(drag.dx) > 20 && e.timeStamp - drag.time < 300));
+    if (!drag) return;
+    const moved = drag.raw - drag.from;
+    const swipe = Math.abs(moved) > 60 || (Math.abs(moved) > 20 && e.timeStamp - drag.time < 300);
+    letGo(swipe ? Math.sign(moved) === -drag.delta : nearer());
   });
-  area.addEventListener("touchcancel", () => { if (drag) letGo(false); });
+  area.addEventListener("touchcancel", () => { if (drag) letGo(nearer()); });
   document.addEventListener("keydown", (e) => {
     if ($("viewer").hidden) return;
     if (e.key === "Escape") closeViewer();
