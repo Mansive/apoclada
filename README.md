@@ -60,8 +60,8 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 - **Rapid mode** for MOSS also needs the
   [rapid-moss custom node](https://huggingface.co/darask0/MOSS-Image_4-step_adapter_lora/tree/main/comfyui/rapid-moss),
   which runs darask0's 4-step adapter. Copy its `rapid-moss` folder into `ComfyUI/custom_nodes` and
-  restart ComfyUI. Setup downloads the adapter files. Until the node is installed, Rapid stays
-  grayed out.
+  restart ComfyUI. Setup downloads the adapter files. Until the node is installed, the Rapid button
+  doesn't appear.
 
 ### What's in each pack
 
@@ -164,7 +164,7 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
 |---|---|---|
 | Quality | 20 (adjustable) | Best detail |
 | Turbo | 8 | Official Turbo LoRA |
-| Fast | 4 | DMAD LoRA; rougher, fine for simple animations |
+| Fast | 4 | DMAD LoRA; rougher, fine for simple animations. Not available with references |
 
 Before each video, Studio unloads ComfyUI's models. This works around a slowdown on AMD
 (ComfyUI issue #16502) where a video made right after another job samples about 3 times slower.
