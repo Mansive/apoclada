@@ -233,11 +233,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 @media (min-width: 700px) {
   .viewer { grid-template-rows: max(var(--top), var(--bar)) 1fr auto max(var(--top), var(--bar)); }
 }
-.viewer.bare:not(:has(:focus-visible)) { grid-template-rows: 0 1fr auto 0; }
+/* Original keeps the rows open, so the image stays its size and only the buttons fade. */
+.viewer.bare:not(.original, :has(:focus-visible)) { grid-template-rows: 0 1fr auto 0; }
+.viewer:not(.original) #v-size .original, .viewer.original #v-size .fit { display: none; }
 .viewer .ghost { background: oklch(1 0 0 / 0.1); border-color: oklch(1 0 0 / 0.2); color: oklch(1 0 0); }
 .viewer .danger { color: oklch(0.74 0.16 15); }
 .viewer-top { align-self: start; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 10px 16px; font-variant-numeric: tabular-nums; }
 .viewer-top > button { justify-self: start; }
+.viewer-top > #v-size { justify-self: end; }
 /* The picture's space holds the neighbour (.peek) too while they slide, and stays below the buttons
    and Info. */
 .viewer-img { container-type: size; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px; position: relative; z-index: -1; overflow: hidden; }

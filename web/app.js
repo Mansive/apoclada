@@ -1245,7 +1245,7 @@ function openViewer(list, index) {
 }
 
 // Hides the buttons around the image, except on videos, whose taps belong to the video's own
-// controls, and while Info is open. Their rows close up so the image grows.
+// controls, and while Info is open. In Fit Both their rows close up so the image grows.
 function setBare(on) {
   $("viewer").classList.toggle("bare", on && !isVideo(viewer.list[viewer.index]) && $("v-info-panel").hidden);
 }
@@ -1293,6 +1293,8 @@ function showViewerImage() {
   $("v-animate").hidden = !videoFiles;
   $("v-animate").textContent = video ? "Extend" : "Animate";
   $("v-hint").hidden = !video;
+  // Videos keep their buttons, so their size never changes.
+  $("v-size").hidden = video;
   if (video) setBare(false);
   $("v-pos").textContent = list.length > 1 ? `${viewer.index + 1} / ${list.length}` : "";
   // Decodes the next pictures each way ahead of time; otherwise Safari decodes one as it first slides
@@ -1720,6 +1722,18 @@ function bindViewer() {
   $("v-info").onclick = () => ($("v-info-panel").hidden ? showInfo() : ($("v-info-panel").hidden = true));
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
   const area = $("viewer");
+  // Fit Both lets the image grow into the buttons' space as they hide; Original keeps it its size.
+  // The choice is per device.
+  const setOriginal = (on) => {
+    area.classList.toggle("original", on);
+    $("v-size").setAttribute("aria-label", on ? "Original" : "Fit Both");
+  };
+  setOriginal(load("moss-studio-viewer-original", false));
+  $("v-size").onclick = () => {
+    const on = !area.classList.contains("original");
+    setOriginal(on);
+    save("moss-studio-viewer-original", on);
+  };
   // A tap on the picture hides or shows the buttons; one on the black space around it closes the
   // viewer, like Close does. A tap that catches a slide does neither (see touchstart).
   area.addEventListener("click", (e) => {
