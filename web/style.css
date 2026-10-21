@@ -214,6 +214,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 
 .viewer {
   position: fixed; inset: 0; z-index: 20; background: oklch(0 0 0); color: oklch(1 0 0);
+  display: grid; grid-template-rows: var(--top, auto) 1fr auto var(--bar, auto); transition: grid-template-rows .2s;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   /* Otherwise a long press anywhere selects the nearest text, such as the count at the top, or offers
      to look up a button's label. */
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
@@ -221,36 +223,32 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
      show the gallery through. Pinches zoom the picture alone instead (app.js). */
   touch-action: pan-x pan-y;
 }
-/* The picture fills the screen, and the buttons lie over it on translucent bars. Hidden buttons stay
-   focusable, and tabbing to one brings them all back. */
-.viewer-top, .viewer-bar {
-  position: absolute; left: 0; right: 0; background: oklch(0 0 0 / 0.45);
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); transition: opacity .2s;
-}
+/* Hidden buttons stay focusable, and tabbing to one brings them all back. Their rows close so the
+   image grows into the space; the buttons stay put above it and fade there, rather than being
+   covered or pushed off the screen. */
+.viewer-top, .viewer-bar { position: relative; transition: opacity .2s; }
 .viewer.bare:not(:has(:focus-visible)) :is(.viewer-top, .viewer-bar) { opacity: 0; pointer-events: none; }
+/* Where the bars are one line each, both rows take the taller one's height, so the image stays
+   centred as they open and close. On phones the buttons wrap, and that would cost too much image. */
+@media (min-width: 700px) {
+  .viewer { grid-template-rows: max(var(--top), var(--bar)) 1fr auto max(var(--top), var(--bar)); }
+}
+.viewer.bare:not(:has(:focus-visible)) { grid-template-rows: 0 1fr auto 0; }
 .viewer .ghost { background: oklch(1 0 0 / 0.1); border-color: oklch(1 0 0 / 0.2); color: oklch(1 0 0); }
 .viewer .danger { color: oklch(0.74 0.16 15); }
-.viewer-top {
-  top: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; font-variant-numeric: tabular-nums;
-  padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left));
-}
+.viewer-top { align-self: start; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 10px 16px; font-variant-numeric: tabular-nums; }
 .viewer-top > button { justify-self: start; }
 /* The picture's space holds the neighbour (.peek) too while they slide, and stays below the buttons
-   and Info. Videos keep to the space between the bars, which would cover their controls (--top and
-   --bar are the bars' heights). */
-.viewer-img { position: absolute; inset: 0; z-index: -1; container-type: size; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.viewer:has(#v-video:not([hidden])) .viewer-img { top: var(--top, 0); bottom: var(--bar, 0); }
+   and Info. */
+.viewer-img { container-type: size; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px; position: relative; z-index: -1; overflow: hidden; }
 .viewer-img img, .viewer-img video { -webkit-touch-callout: default; }
 /* The image fits the space at any size, keeping its shape (--ar, set once it loads). */
 .viewer-img img { width: min(100cqw, 100cqh * var(--ar, 1)); }
 .viewer-img video { max-width: 100%; max-height: 100%; object-fit: contain; }
 .viewer-img .peek { position: absolute; inset: 0; margin: auto; width: 100cqw; height: 100cqh; object-fit: contain; pointer-events: none; }
 .viewer-bar a { display: inline-flex; align-items: center; text-decoration: none; }
-.viewer-hint { flex-basis: 100%; margin: 0; text-align: center; font-size: 13px; color: oklch(1 0 0 / 0.6); }
-.viewer-bar {
-  bottom: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
-  padding: 12px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-}
+.viewer-hint { margin: 6px 0 0; text-align: center; font-size: 13px; color: oklch(1 0 0 / 0.6); }
+.viewer-bar { grid-row: 4; align-self: end; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 12px 16px 16px; }
 .viewer-bar [aria-label] { font-size: 22px; width: 48px; }
 .icon { width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; }
 /* Info is a sheet over the lower part of the viewer on phones, and a column beside the picture
@@ -270,7 +268,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
     top: 0; left: auto; width: 360px; max-height: none; border: 0; border-left: 1px solid oklch(1 0 0 / 0.15); border-radius: 0;
     padding: env(safe-area-inset-top) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) 16px;
   }
-  .viewer:has(> .viewer-info:not([hidden])) :is(.viewer-top, .viewer-img, .viewer-bar) { right: 360px; }
+  .viewer:has(> .viewer-info:not([hidden])) { padding-right: 360px; }
 }
 
 .picker {

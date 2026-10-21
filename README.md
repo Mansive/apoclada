@@ -167,10 +167,9 @@ Before each video, Apoclada unloads ComfyUI's models. This works around a slowdo
 
 ## Gallery and viewer
 
-The gallery shows every image and video in ComfyUI's output folder, newest first. The viewer shows
-images full screen, with the buttons over them; tap an image to hide or show the buttons, and with
-a mouse they also hide after 3 seconds still. Swipe between images, and pinch to zoom, which hides
-the buttons too. Videos keep clear of the buttons, which stay, so the video's own controls show.
+The gallery shows every image and video in ComfyUI's output folder, newest first. In the viewer,
+tap an image to hide or show the buttons, and it grows into their space; with a mouse they also
+hide after 3 seconds still. Swipe between images, and pinch to zoom, which hides the buttons too.
 
 - **Info** shows the prompt, the enhanced prompt, the model, the settings, how long the file took
   to generate and the file encoding. When a job finishes, Create also shows how long it took.
