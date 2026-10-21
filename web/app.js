@@ -342,7 +342,6 @@ function syncForm() {
   $("prompt").value = video ? v.prompt : settings.prompt;
   $("prompt").placeholder = PROMPT_HINTS[settings.kind];
   $("negative").value = settings.negative;
-  if (settings.negative) $("negative").closest("details").open = true;
   check($("aspects"), "aspect", video ? v.aspect : settings.aspect);
   setUnused($("shape-field"), video && Boolean(v.extend || v.items.some((i) => i.role === "start")),
     v.extend ? "The video keeps the shape of the one it continues" : "The video takes the start image's shape");
@@ -1777,6 +1776,8 @@ function toast(text) {
 async function init() {
   renderChoices();
   bindForm();
+  // Opened once on load, so the form never reopens it after it's collapsed.
+  if (settings.negative) $("negative-field").open = true;
   bindViewer();
   for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => selectTab(b.dataset.tab);
   $("refresh").onclick = loadGallery;

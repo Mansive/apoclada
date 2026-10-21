@@ -107,7 +107,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .segmented.four { grid-template-columns: repeat(4, 1fr); }
 .note { font-size: 13px; color: var(--muted); }
 .unused, .segmented button:disabled { opacity: .4; cursor: not-allowed; }
-.unused > *, .unused summary { pointer-events: none; }
+.unused > :not(summary) { pointer-events: none; }
+.unused > summary { cursor: pointer; }
 /* Image/Video are tabs along the panel's top edge rather than buttons inside it. */
 #kind {
   margin: -16px -16px 0; gap: 0; border-bottom: 1px solid var(--line);
