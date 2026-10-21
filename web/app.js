@@ -947,7 +947,7 @@ async function generate() {
   // the first preview loads.
   if (!$("results").querySelector(".preview")) {
     const { width, height } = video ? videoDimensions(settings.video) : dimensions(settings.aspect, settings.mp);
-    previewImage().style.aspectRatio = `${width} / ${height}`;
+    previewSlot().style.aspectRatio = `${width} / ${height}`;
   }
   if (window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -1071,23 +1071,23 @@ function showResults(images, version) {
   while (box.children.length > 12) box.lastElementChild.remove();
 }
 
-function previewImage() {
-  let el = $("results").querySelector(".preview");
-  if (!el) {
-    el = document.createElement("img");
-    el.className = "preview";
-    el.alt = "";
-    $("results").prepend(el);
+// The live preview's frame, showing twinkling stars until the first preview arrives.
+function previewSlot() {
+  let slot = $("results").querySelector(".preview");
+  if (!slot) {
+    slot = el("div", { className: "preview" },
+      el("img", { alt: "Live preview" }),
+      el("div", { className: "waiting" }, el("div", { className: "stars" }, el("span", {}, "✦"), el("span", {}, "✧"), el("span", {}, "✦")), "Dreaming it up…"));
+    $("results").prepend(slot);
   }
-  return el;
+  return slot;
 }
 
 function showPreview(blob) {
-  const el = previewImage();
-  el.alt = "Live preview";
+  const img = previewSlot().querySelector("img");
   if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(blob);
-  el.src = previewUrl;
+  img.src = previewUrl;
 }
 
 function removePreview() {
