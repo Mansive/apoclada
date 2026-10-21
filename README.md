@@ -167,7 +167,8 @@ Before each video, Apoclada unloads ComfyUI's models. This works around a slowdo
 
 ## Gallery and viewer
 
-The gallery shows every image and video in ComfyUI's output folder, newest first. In the viewer:
+The gallery shows every image and video in ComfyUI's output folder, newest first. In the viewer,
+tap an image to hide or show the buttons; with a mouse they also hide after 3 seconds still.
 
 - **Info** shows the prompt, the enhanced prompt, the model, the settings, how long the file took
   to generate and the file encoding. When a job finishes, Create also shows how long it took.
@@ -185,6 +186,7 @@ The gallery shows every image and video in ComfyUI's output folder, newest first
   Reuse settings works.
 - **Video files:** H.264 (plays everywhere) or H.265 (smaller), encoded by an NVIDIA or AMD
   graphics card or by the CPU. Setup only lists the encoders that actually work on the PC.
+- **Viewer:** with the buttons hidden, the image either grows into their space or keeps its size.
 - **Updates:** checks the git remote this folder came from, pulls new commits and restarts ComfyUI.
   It also warns when ComfyUI is older than Apoclada needs.
 

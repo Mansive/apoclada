@@ -217,6 +217,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   display: grid; grid-template-rows: auto 1fr auto auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
+/* Hidden buttons stay focusable, and tabbing to one brings them all back. */
+.viewer-top, .viewer-bar { transition: opacity .2s; }
+.viewer.bare:not(:has(:focus-visible)) :is(.viewer-top, .viewer-bar) { opacity: 0; pointer-events: none; }
+.viewer.fill { grid-template-rows: var(--top, auto) 1fr auto var(--bar, auto); transition: grid-template-rows .2s; }
+.viewer.fill.bare:not(:has(:focus-visible)) { grid-template-rows: 0 1fr auto 0; }
 .viewer .ghost { background: oklch(1 0 0 / 0.1); border-color: oklch(1 0 0 / 0.2); color: oklch(1 0 0); }
 .viewer .danger { color: oklch(0.74 0.16 15); }
 .viewer-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 10px 16px; font-variant-numeric: tabular-nums; }
@@ -225,7 +230,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .viewer-img img, .viewer-img video { max-width: 100%; max-height: 100%; object-fit: contain; -webkit-touch-callout: default; }
 .viewer-bar a { display: inline-flex; align-items: center; text-decoration: none; }
 .viewer-hint { margin: 6px 0 0; text-align: center; font-size: 13px; color: oklch(1 0 0 / 0.6); }
-.viewer-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 12px 16px 16px; }
+.viewer-bar { grid-row: 4; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 12px 16px 16px; }
 .viewer-bar [aria-label] { font-size: 22px; width: 48px; }
 .icon { width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; }
 /* Info is a sheet over the lower part of the viewer on phones, and a column beside the picture

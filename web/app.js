@@ -213,8 +213,8 @@ let models = [];
 let turboLora = null;
 let rapidAdapter = null;
 let videoFiles = null;
-// Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
-let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] } };
+// Setup's choices, shared by every device through the PC; generate() refreshes them before each image.
+let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] }, viewer_fill: true };
 // Safari and Chrome 155+ show JPEG XL. Other browsers get .jxl images as PNG copies made by the PC.
 const JXL_PROBE = "data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==";
 let jxlShown = false;
@@ -1227,8 +1227,27 @@ function showGalleryCount() {
 function openViewer(list, index) {
   viewer = { list, index };
   $("viewer").hidden = false;
+  $("viewer").classList.remove("bare");
+  $("viewer").classList.toggle("fill", prefs.viewer_fill);
+  $("viewer").removeAttribute("style");
   document.body.style.overflow = "hidden";
   showViewerImage();
+}
+
+// Hides the buttons around the image, except on videos, whose taps belong to the video's own
+// controls, and while Info is open. In Fill mode their rows close up so the image grows; grid rows
+// only animate between lengths, so the rows' heights are pinned while they show, and they open back
+// up to those.
+function setBare(on) {
+  const v = $("viewer");
+  on = on && !isVideo(viewer.list[viewer.index]) && $("v-info-panel").hidden;
+  if (on === v.classList.contains("bare")) return;
+  if (on) {
+    v.style.setProperty("--top", `${v.querySelector(".viewer-top").offsetHeight}px`);
+    v.style.setProperty("--bar", `${v.querySelector(".viewer-bar").offsetHeight}px`);
+    v.offsetHeight;
+  }
+  v.classList.toggle("bare", on);
 }
 
 function closeViewer() {
@@ -1273,6 +1292,7 @@ function showViewerImage() {
   $("v-animate").hidden = !videoFiles;
   $("v-animate").textContent = video ? "Extend" : "Animate";
   $("v-hint").hidden = !video;
+  if (video) setBare(false);
   $("v-pos").textContent = list.length > 1 ? `${viewer.index + 1} / ${list.length}` : "";
   $("v-prev").disabled = viewer.index === 0;
   $("v-next").disabled = viewer.index === list.length - 1;
@@ -1593,8 +1613,26 @@ function bindViewer() {
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
   let startX = null;
   const area = $("viewer");
-  // A tap on the black space around the picture closes the viewer, like Close does.
-  area.addEventListener("click", (e) => { if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer(); });
+  // A tap on the picture hides or shows the buttons; one on the black space around it closes the
+  // viewer, like Close does.
+  area.addEventListener("click", (e) => {
+    if (e.target === $("v-img")) setBare(!area.classList.contains("bare"));
+    else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
+  });
+  // Once the rows are back, they size to their buttons again, which can wrap differently after a rotation.
+  area.addEventListener("transitionend", (e) => {
+    if (e.target !== area || area.classList.contains("bare")) return;
+    area.style.removeProperty("--top");
+    area.style.removeProperty("--bar");
+  });
+  // A mouse brings the buttons back when it moves and hides them after 3 s still, unless it rests on one.
+  let idle;
+  area.addEventListener("pointermove", (e) => {
+    if (e.pointerType !== "mouse") return;
+    setBare(false);
+    clearTimeout(idle);
+    if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
+  });
   // Swipes on the video would fight with scrubbing its timeline, and swipes in Info with selecting
   // its text, so neither changes pages.
   area.addEventListener("touchstart", (e) => { startX = e.touches.length === 1 && !e.target.closest("video, .viewer-info") ? e.touches[0].clientX : null; }, { passive: true });
@@ -1722,6 +1760,14 @@ async function loadPrefs(change) {
       : `${hevc ? "x265" : "x264"} encodes the video on the CPU, a few seconds slower than a graphics card.${encoders.length > 1 ? "" : " No NVIDIA or AMD video encoder was found."}` }),
     el("span", { className: "note", textContent: "Applies to new videos from every device. Existing videos keep their format." }),
   ].filter(Boolean));
+  $("viewer-mode").replaceChildren(
+    group(
+      radio("Fill the screen", "Image grows", p.viewer_fill, { viewer_fill: true }),
+      radio("Keep size", "Image stays put", !p.viewer_fill, { viewer_fill: false })),
+    el("span", { className: "note", textContent: "Tap an image in the viewer to hide or show its buttons. With a mouse, they also hide after 3 seconds without movement. Videos always keep them." }),
+    el("span", { className: "note", textContent: p.viewer_fill
+      ? "With the buttons hidden, the image grows into their space."
+      : "The buttons fade out and the image stays where it is." }));
 }
 
 async function loadUpdates(check) {
@@ -1803,6 +1849,7 @@ async function init() {
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
   getJson("/studio/host", {}).then(({ host }) => { $("v-reveal").hidden = !host; });
+  getJson("/studio/prefs", prefs).then((p) => { prefs = p; });
   jxlShown = await imageSize(JXL_PROBE).then(() => true, () => false);
   await loadModels();
   // A fresh install has nothing to generate with yet, so it opens on Setup.
