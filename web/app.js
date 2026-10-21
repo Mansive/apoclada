@@ -1316,7 +1316,7 @@ async function slide(delta, peek, dx, turnPage) {
   const cur = shown();
   const page = cur.parentNode.clientWidth * delta;
   const to = turnPage ? -page : 0;
-  const timing = { duration: 250, easing: "cubic-bezier(.2, .7, .3, 1)" };
+  const timing = { duration: 450, easing: "cubic-bezier(.2, .7, .3, 1)" };
   cur.style.transform = `translateX(${to}px)`;
   peek.style.transform = `translateX(${to + page}px)`;
   await Promise.all([
@@ -1676,8 +1676,8 @@ function bindViewer() {
     clearTimeout(idle);
     if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
   });
-  // A swipe drags the picture with its neighbour beside it. Letting go past a quarter of the width,
-  // or after a quick flick, turns the page; otherwise it slides back. Past the first or last picture
+  // A swipe drags the picture with its neighbour beside it. Letting go after 60 px, or after a
+  // quick flick, turns the page; otherwise it slides back. Past the first or last picture
   // it drags at a third of the finger's pace. Swipes on the video would fight with scrubbing its
   // timeline, and swipes in Info with selecting its text, so neither moves anything.
   const box = area.querySelector(".viewer-img");
@@ -1711,7 +1711,7 @@ function bindViewer() {
     if (drag.peek) drag.peek.style.transform = `translateX(${drag.dx + delta * box.clientWidth}px)`;
   }, { passive: true });
   area.addEventListener("touchend", (e) => {
-    if (drag) letGo(Math.abs(drag.dx) > box.clientWidth / 4 || (Math.abs(drag.dx) > 30 && e.timeStamp - drag.time < 300));
+    if (drag) letGo(Math.abs(drag.dx) > 60 || (Math.abs(drag.dx) > 20 && e.timeStamp - drag.time < 300));
   });
   area.addEventListener("touchcancel", () => { if (drag) letGo(false); });
   document.addEventListener("keydown", (e) => {
