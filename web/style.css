@@ -30,7 +30,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .topbar {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px;
+  height: 64px; padding: 0 16px;
   background: color-mix(in oklch, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
@@ -47,11 +47,12 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 main { max-width: 1280px; margin: 0 auto; padding: 16px; }
 
 .create { display: grid; gap: 16px; }
-/* Generate scrolls here on narrow screens; the margin keeps the progress bar clear of the top bar. */
-.stage { scroll-margin-top: 72px; }
+/* Generate scrolls here on narrow screens. 80px is the top bar plus main's padding, so the stage
+   sticks right where it already sits and doesn't slide up first. */
+.stage { scroll-margin-top: 80px; }
 @media (min-width: 900px) {
   .create { grid-template-columns: minmax(340px, 420px) 1fr; align-items: start; }
-  .stage { position: sticky; top: 72px; }
+  .stage { position: sticky; top: 80px; }
 }
 
 .controls, .status, .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
