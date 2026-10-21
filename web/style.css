@@ -165,6 +165,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 }
 .results .preview {
   display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+  transition: border-color .2s;
 }
 .results .preview > * { grid-area: 1 / 1; }
 .results .preview img { position: relative; z-index: 1; cursor: default; filter: saturate(.9); background: none; animation: appear .6s ease-out; }
