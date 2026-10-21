@@ -1229,25 +1229,14 @@ function openViewer(list, index) {
   $("viewer").hidden = false;
   $("viewer").classList.remove("bare");
   $("viewer").classList.toggle("fill", prefs.viewer_fill);
-  $("viewer").removeAttribute("style");
   document.body.style.overflow = "hidden";
   showViewerImage();
 }
 
 // Hides the buttons around the image, except on videos, whose taps belong to the video's own
-// controls, and while Info is open. In Fill mode their rows close up so the image grows; grid rows
-// only animate between lengths, so the rows' heights are pinned while they show, and they open back
-// up to those.
+// controls, and while Info is open. In Fill mode their rows close up so the image grows.
 function setBare(on) {
-  const v = $("viewer");
-  on = on && !isVideo(viewer.list[viewer.index]) && $("v-info-panel").hidden;
-  if (on === v.classList.contains("bare")) return;
-  if (on) {
-    v.style.setProperty("--top", `${v.querySelector(".viewer-top").offsetHeight}px`);
-    v.style.setProperty("--bar", `${v.querySelector(".viewer-bar").offsetHeight}px`);
-    v.offsetHeight;
-  }
-  v.classList.toggle("bare", on);
+  $("viewer").classList.toggle("bare", on && !isVideo(viewer.list[viewer.index]) && $("v-info-panel").hidden);
 }
 
 function closeViewer() {
@@ -1619,12 +1608,17 @@ function bindViewer() {
     if (e.target === $("v-img")) setBare(!area.classList.contains("bare"));
     else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
   });
-  // Once the rows are back, they size to their buttons again, which can wrap differently after a rotation.
-  area.addEventListener("transitionend", (e) => {
-    if (e.target !== area || area.classList.contains("bare")) return;
-    area.style.removeProperty("--top");
-    area.style.removeProperty("--bar");
+  // Grid rows only animate between lengths, and Safari won't start from a length set in the same
+  // moment as the change, so Fill's rows always hold the buttons' heights in pixels. The buttons sit
+  // at the rows' outer edges, so their heights stay their own even while the rows are closed. The
+  // zero heights of a closed viewer are skipped, or the rows would grow in from nothing on opening.
+  const rows = new ResizeObserver(() => {
+    if (area.hidden) return;
+    area.style.setProperty("--top", `${area.querySelector(".viewer-top").offsetHeight}px`);
+    area.style.setProperty("--bar", `${area.querySelector(".viewer-bar").offsetHeight}px`);
   });
+  rows.observe(area.querySelector(".viewer-top"));
+  rows.observe(area.querySelector(".viewer-bar"));
   // A mouse brings the buttons back when it moves and hides them after 3 s still, unless it rests on one.
   let idle;
   area.addEventListener("pointermove", (e) => {
