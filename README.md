@@ -1,9 +1,9 @@
-# Astrofell
+# Apoclada
 
 A touch-friendly image and video app for ComfyUI. It runs inside ComfyUI at `/studio`, so you can
 generate from a phone or tablet while the PC does the work. There are no node graphs to wire up:
 pick a model, write a prompt and press Generate. Generation goes through ComfyUI's own API;
-Astrofell adds the page, a gallery, model downloads and one-tap updates.
+Apoclada adds the page, a gallery, model downloads and one-tap updates.
 
 ## Features
 
@@ -12,16 +12,16 @@ Astrofell adds the page, a gallery, model downloads and one-tap updates.
 - **Videos with sound** with MiniMax H3, from a prompt, images, references or an earlier video.
 - **Gallery** of everything in ComfyUI's output folder, with a full-screen viewer, the settings
   each file was made with, and Reuse settings.
-- **Setup** that downloads the models, picks image and video file formats, and updates Astrofell.
+- **Setup** that downloads the models, picks image and video file formats, and updates Apoclada.
 - Live previews while generating, and a progress bar for each job.
 - Works as a home-screen app on iPhone and iPad.
 
 ## Requirements
 
-- ComfyUI 0.41.0 or newer. Astrofell uses ComfyUI's native MOSS-Image, Krea 2 and MiniMax H3 nodes.
+- ComfyUI 0.41.0 or newer. Apoclada uses ComfyUI's native MOSS-Image, Krea 2 and MiniMax H3 nodes.
 - Windows. Show in folder, Force stop and the restart after an update use Windows-only calls.
-- Git, if you want Astrofell to update itself.
-- A graphics card with plenty of VRAM. Astrofell was built and tested on an AMD RX 9070 (16 GB),
+- Git, if you want Apoclada to update itself.
+- A graphics card with plenty of VRAM. Apoclada was built and tested on an AMD RX 9070 (16 GB),
   including video. NVIDIA cards should work but haven't been tested.
 - Disk space for the models you choose (see [Models](#models)).
 
@@ -35,10 +35,10 @@ Astrofell adds the page, a gallery, model downloads and one-tap updates.
    python -m pip install -r custom_nodes/apoclada_studio/requirements.txt
    ```
 
-   This adds JPEG XL support. Without it Astrofell still works and saves PNG.
+   This adds JPEG XL support. Without it Apoclada still works and saves PNG.
 3. Start ComfyUI and open <http://localhost:8188/studio>.
 
-To use Astrofell from another device on your network, start ComfyUI with `--listen` and open
+To use Apoclada from another device on your network, start ComfyUI with `--listen` and open
 `http://<PC's IP address>:8188/studio`. On iPhone or iPad, Share › Add to Home Screen opens it
 full-screen like an app.
 
@@ -66,7 +66,7 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 ### What's in each pack
 
 Most files are the ones ComfyUI's own templates use. The notes under each table explain where
-Astrofell differs and why. Speed figures were measured on an RX 9070.
+Apoclada differs and why. Speed figures were measured on an RX 9070.
 
 **MOSS-Image**
 
@@ -78,12 +78,12 @@ Astrofell differs and why. Speed figures were measured on an RX 9070.
 | Turbo LoRA (8 steps) | `moss-image-sft-8step-dmd` | lodestones/MOSS-Image-SFT-8-steps-dmd |
 | Rapid adapter (4 steps) | `rapid-moss-4step` (3 files) | darask0/MOSS-Image_4-step_adapter_lora |
 
-- **VAE:** Astrofell started with Comfy-Org's full `flux2-vae`. The MOSS team said their own release
+- **VAE:** Apoclada started with Comfy-Org's full `flux2-vae`. The MOSS team said their own release
   decodes with FLUX.2's small decoder because it avoids odd spots and artifacts. It also decodes
   about 40% faster, with no visible difference. ComfyUI's MOSS template has since moved to the same
-  small decoder, and Astrofell now uses the template's copy of Black Forest Labs' file.
+  small decoder, and Apoclada now uses the template's copy of Black Forest Labs' file.
 - **Diffusion model:** int8, like the template. It runs about a third faster than the bf16 version.
-- **Text encoder:** 4-bit, like the template. Astrofell first used Comfy-Org's int8 version (9.7 GB
+- **Text encoder:** 4-bit, like the template. Apoclada first used Comfy-Org's int8 version (9.7 GB
   instead of 7.3 GB). Side by side, the images were just as good and peak VRAM was about 1 GB lower.
   Enhance prompt ran about twice as fast, because the smaller encoder fits beside the image model.
 - **Turbo and Rapid** are community distillations that ComfyUI's templates don't include.
@@ -96,11 +96,11 @@ Astrofell differs and why. Speed figures were measured on an RX 9070.
 | Text encoder (Qwen3-VL 4B) | `qwen3vl_4b_int8_convrot` | Comfy-Org/Krea-2 |
 | VAE | `qwen_image_vae` | Comfy-Org/Krea-2 |
 
-- **Diffusion model:** ComfyUI's templates run Krea 2 Turbo. Astrofell runs lodestones' Kroma
+- **Diffusion model:** ComfyUI's templates run Krea 2 Turbo. Apoclada runs lodestones' Kroma
   fine-tune of it on the same nodes.
-- **Text encoder:** the template uses `qwen3vl_4b_fp8_scaled`. Astrofell uses Comfy-Org's int8
+- **Text encoder:** the template uses `qwen3vl_4b_fp8_scaled`. Apoclada uses Comfy-Org's int8
   version, like its other models, which is slightly smaller (4.9 GB instead of 5.2 GB). The two
-  haven't been compared in Astrofell.
+  haven't been compared in Apoclada.
 - **VAE:** the same as the template.
 
 **MiniMax H3**
@@ -166,7 +166,7 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
 | Turbo | 8 | Official Turbo LoRA |
 | Fast | 4 | DMAD LoRA; rougher, fine for simple animations. Not available with references |
 
-Before each video, Astrofell unloads ComfyUI's models. This works around a slowdown on AMD
+Before each video, Apoclada unloads ComfyUI's models. This works around a slowdown on AMD
 (ComfyUI issue #16502) where a video made right after another job samples about 3 times slower.
 
 ## Gallery and viewer
@@ -190,7 +190,7 @@ The gallery shows every image and video in ComfyUI's output folder, newest first
 - **Video files:** H.264 (plays everywhere) or H.265 (smaller), encoded by an NVIDIA or AMD
   graphics card or by the CPU. Setup only lists the encoders that actually work on the PC.
 - **Updates:** checks the git remote this folder came from, pulls new commits and restarts ComfyUI.
-  It also warns when ComfyUI is older than Astrofell needs.
+  It also warns when ComfyUI is older than Apoclada needs.
 
 ## Stopping a job
 

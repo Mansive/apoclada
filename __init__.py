@@ -1,4 +1,4 @@
-"""Astrofell: a touch-friendly image and video front end served by ComfyUI at /studio.
+"""Apoclada: a touch-friendly image and video front end served by ComfyUI at /studio.
 
 Generation goes through ComfyUI's own /prompt, /ws, /view and /interrupt APIs; this module adds
 the page itself, gallery listing, metadata and delete, model downloads and self-updates.
@@ -52,7 +52,7 @@ HF = "https://huggingface.co"
 # Setup has to download into it whether or not the node is installed yet.
 RAPID_ADAPTER = "rapid-moss-4step"
 folder_paths.add_model_folder_path("rapid_moss", os.path.join(folder_paths.models_dir, "rapid_moss"))
-# Every file Astrofell can download: name -> (models folder, source, size in bytes).
+# Every file Apoclada can download: name -> (models folder, source, size in bytes).
 FILES = {
     "moss_image_sft_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors", 5413698958),
     # 4-bit, as in ComfyUI's MOSS template. Images match the int8 version, and with about 2 GB less VRAM
@@ -114,7 +114,7 @@ PACKS = [
 
 routes = PromptServer.instance.routes
 
-# ComfyUI keeps no record of when a job started, so Astrofell notes when each one leaves the queue, the
+# ComfyUI keeps no record of when a job started, so Apoclada notes when each one leaves the queue, the
 # moment ComfyUI's own "Prompt executed in" time starts from. Jobs run one at a time, so the save
 # nodes measure from the latest.
 job_started = None
@@ -136,7 +136,7 @@ def jxl_box(kind, payload):
     return (len(payload) + 8).to_bytes(4, "big") + kind + payload
 
 
-# What Astrofell's save nodes add to ComfyUI's metadata, as extra_pnginfo entries next to the workflow:
+# What Apoclada's save nodes add to ComfyUI's metadata, as extra_pnginfo entries next to the workflow:
 # how long the job had run when saving started, and the prompt Enhance prompt wrote (the workflow
 # alone only holds the prompt that was typed). The viewer's Info shows both.
 def studio_metadata(extra_pnginfo, enhanced_prompt=None):
@@ -266,7 +266,7 @@ class SaveVideoMP4:
     def save_video(self, video, filename_prefix, codec, encoder, prompt=None, extra_pnginfo=None):
         c = video.get_components()
         height, width = c.images.shape[1:3]
-        # AMD's H.265 encoder won't open below 384 px wide (Astrofell's smallest portrait videos), so
+        # AMD's H.265 encoder won't open below 384 px wide (Apoclada's smallest portrait videos), so
         # those go to the CPU instead.
         if not encoder_opens(codec, encoder, width, height):
             encoder = "software"
@@ -307,7 +307,7 @@ class SaveVideoMP4:
 
 
 NODE_CLASS_MAPPINGS = {"ApocladaSaveImage": SaveImageStudio, "ApocladaSaveVideo": SaveVideoMP4, **({"ApocladaSaveImageJXL": SaveImageJXL} if pillow_jxl else {})}
-NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (Astrofell)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)", "ApocladaSaveVideo": "Save Video (GPU or CPU)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (Apoclada)", "ApocladaSaveImageJXL": "Save Image (JPEG XL)", "ApocladaSaveVideo": "Save Video (GPU or CPU)"}
 
 # Choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
 PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
@@ -374,7 +374,7 @@ PromptServer.instance.loop.set_exception_handler(ignore_client_resets)
 
 
 # ComfyUI sends a job's progress, previews and results only to the browser that queued it. Copying
-# them to every other Astrofell page (client ids starting "moss-") lets the iPad follow a job
+# them to every other Apoclada page (client ids starting "moss-") lets the iPad follow a job
 # started on the PC, and the other way round. ComfyUI's own editor tabs get nothing extra.
 STUDIO_CLIENT_PREFIX = "moss-"
 

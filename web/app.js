@@ -195,7 +195,7 @@ function check(group, key, value) {
 }
 
 // ComfyUI only sends progress and completion events to the client that queued the job. The "moss-"
-// prefix asks __init__.py to copy every job's events to each Astrofell page, so the id needn't
+// prefix asks __init__.py to copy every job's events to each Apoclada page, so the id needn't
 // survive a reload; a fresh one per page keeps two open tabs from taking each other's socket.
 const clientId = `moss-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
@@ -773,7 +773,7 @@ function easyCacheNode(model) {
   return { "40": { class_type: "EasyCache", inputs: { model, reuse_threshold: 0.2, start_percent: 0.15, end_percent: 0.95, verbose: false } } };
 }
 
-// Astrofell's save nodes write the generation time and enhanced prompt into the file for the viewer's Info.
+// Apoclada's save nodes write the generation time and enhanced prompt into the file for the viewer's Info.
 function saveNode(prefix, s) {
   const inputs = { filename_prefix: prefix, images: ["17", 0], ...(s.enhance && { enhanced_prompt: ["30", 0] }) };
   if (prefs.image_format === "jxl") return { class_type: "ApocladaSaveImageJXL", inputs: { ...inputs, lossless: prefs.jxl_lossless } };
@@ -1654,7 +1654,7 @@ async function loadPrefs(change) {
         : "Lossy looks the same as PNG at normal viewing, but isn't pixel-identical: very fine detail shifts slightly." }),
     jxl && el("span", { className: "note", textContent: "Safari and Chrome 155 or newer show JPEG XL; other browsers here see a PNG copy. Many apps outside the browser can't open .jxl files yet." }),
     el("span", { className: "note", textContent: "Applies to new images from every device. Existing images keep their format." }),
-    !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC. Install Astrofell's requirements.txt into ComfyUI's Python, then restart ComfyUI." }),
+    !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC. Install Apoclada's requirements.txt into ComfyUI's Python, then restart ComfyUI." }),
   ].filter(Boolean));
   // The PC lists the encoders it can run for each codec: an NVIDIA or AMD graphics card's, and the CPU.
   const hevc = p.video_codec === "hevc";
@@ -1687,9 +1687,9 @@ async function loadUpdates(check) {
     ? el("button", { type: "button", className: "ghost", textContent: "Update and restart", onclick: runUpdate })
     : el("button", { type: "button", className: "ghost", textContent: "Check now", onclick: () => loadUpdates(true) }));
   $("updates").replaceChildren(...[
-    el("span", {}, `Astrofell ${u.version || ""}`.trim(), el("br"), el("span", { className: "note", textContent: status })),
+    el("span", {}, `Apoclada ${u.version || ""}`.trim(), el("br"), el("span", { className: "note", textContent: status })),
     el("span", {}, `ComfyUI ${u.comfyui}`),
-    !u.comfyui_ok && el("span", { className: "warn", textContent: `Astrofell needs ComfyUI ${u.comfyui_min} or newer. Update ComfyUI before generating.` }),
+    !u.comfyui_ok && el("span", { className: "warn", textContent: `Apoclada needs ComfyUI ${u.comfyui_min} or newer. Update ComfyUI before generating.` }),
     button && el("div", { className: "actions-row" }, button),
   ].filter(Boolean));
 }
