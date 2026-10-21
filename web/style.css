@@ -164,6 +164,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   width: 100%; height: auto; display: block; border-radius: var(--radius); background: var(--panel-2); cursor: zoom-in;
 }
 .results .preview { cursor: default; filter: saturate(.9); }
+.results .preview ~ .empty { display: none; }
 
 .gallery-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; color: var(--muted); }
 .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }

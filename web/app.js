@@ -943,6 +943,12 @@ async function generate() {
   pending.push(data.prompt_id);
   save(PENDING_KEY, pending);
   updateStatus(running ? null : "Queued…");
+  // The preview's space is held from the start, so the page doesn't shrink and scroll back up while
+  // the first preview loads.
+  if (!$("results").querySelector(".preview")) {
+    const { width, height } = video ? videoDimensions(settings.video) : dimensions(settings.aspect, settings.mp);
+    previewImage().style.aspectRatio = `${width} / ${height}`;
+  }
   if (window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1065,16 +1071,20 @@ function showResults(images, version) {
   while (box.children.length > 12) box.lastElementChild.remove();
 }
 
-function showPreview(blob) {
-  const box = $("results");
-  box.querySelector(".empty")?.remove();
-  let el = box.querySelector(".preview");
+function previewImage() {
+  let el = $("results").querySelector(".preview");
   if (!el) {
     el = document.createElement("img");
     el.className = "preview";
-    el.alt = "Live preview";
-    box.prepend(el);
+    el.alt = "";
+    $("results").prepend(el);
   }
+  return el;
+}
+
+function showPreview(blob) {
+  const el = previewImage();
+  el.alt = "Live preview";
   if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(blob);
   el.src = previewUrl;
