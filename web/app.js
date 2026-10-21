@@ -683,7 +683,7 @@ function bindForm() {
   $("settings").open = load("moss-studio-settings-open", false);
   $("settings").ontoggle = () => save("moss-studio-settings-open", $("settings").open);
   $("form").onsubmit = (e) => { e.preventDefault(); generate(); };
-  $("cancel").onclick = cancelAll;
+  $("cancel").onclick = cancelCurrent;
 }
 
 /* ---------- generation ---------- */
@@ -953,17 +953,19 @@ async function generate() {
   if (pending.length === 1 && window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function cancelAll() {
+// Stops the job generating now, or the next one if none has started, leaving the rest queued.
+async function cancelCurrent() {
   if (running && stopping === running) return forceStop();
-  const queued = pending.filter((id) => id !== running);
-  if (queued.length) await post("/queue", { delete: queued });
   if (running) {
     await post("/interrupt", { prompt_id: running });
     stopping = running;
     $("cancel").textContent = "Force stop";
     updateStatus("Stopping…");
+  } else if (pending.length) {
+    const next = pending[0];
+    await post("/queue", { delete: [next] });
+    finish(next);
   }
-  for (const id of queued) finish(id);
 }
 
 // ComfyUI only notices a cancel between GPU operations, which can be minutes apart on a big video.

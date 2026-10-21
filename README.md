@@ -190,6 +190,6 @@ The gallery shows every image and video in ComfyUI's output folder, newest first
 
 ## Stopping a job
 
-**Cancel** stops the job the next time ComfyUI checks, which can take minutes during a long video.
+**Cancel** stops the current job, leaving the rest queued, the next time ComfyUI checks, which can take minutes during a long video.
 If that's too slow, the button turns into **Force stop**. Force stop restarts ComfyUI with the same
 command line. The current job is lost, and models load again on the next run.
