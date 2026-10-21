@@ -216,6 +216,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   position: fixed; inset: 0; z-index: 20; background: oklch(0 0 0); color: oklch(1 0 0);
   display: grid; grid-template-rows: auto 1fr auto auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* Otherwise a long press anywhere selects the nearest text, such as the count at the top. */
+  -webkit-user-select: none; user-select: none;
 }
 /* Hidden buttons stay focusable, and tabbing to one brings them all back. While Fill's rows close,
    the buttons stay put above the growing image and fade there, rather than being covered or pushed
@@ -252,6 +254,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   position: absolute; left: 0; right: 0; bottom: 0; max-height: 75%; overflow-y: auto; margin: 0 auto; width: min(100%, 720px);
   padding: 0 16px calc(16px + env(safe-area-inset-bottom)); background: oklch(0.2 0.01 285 / 0.97);
   border: 1px solid oklch(1 0 0 / 0.15); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0;
+  -webkit-user-select: text; user-select: text;
 }
 .viewer-info-head { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; background: inherit; }
 .viewer-info dl { margin: 0; display: grid; gap: 14px; }
