@@ -1797,7 +1797,7 @@ function bindViewer() {
     }
     const [lo, hi] = ends(), dx = strip.dx;
     const raw = dx < lo ? lo + (dx - lo) * 3 : dx > hi ? hi + (dx - hi) * 3 : dx;
-    drag = { strip, goal, x: e.touches[0].clientX - raw, from: raw, raw, track: [{ raw, time: e.timeStamp }] };
+    drag = { strip, goal, x: e.touches[0].clientX - raw, y: e.touches[0].clientY, from: raw, raw, track: [{ raw, time: e.timeStamp }] };
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
     if (pinch && e.touches.length === 2) {
@@ -1810,8 +1810,14 @@ function bindViewer() {
     // The last 100 ms of movement give the speed at letting go.
     drag.track.push({ raw, time: e.timeStamp });
     while (e.timeStamp - drag.track[0].time > 100) drag.track.shift();
-    // Small movements are taps, which hide or show the buttons. A caught slide follows the finger at once.
-    if (!drag.moved && drag.goal === undefined && Math.abs(raw - drag.from) < 10) return;
+    // Small movements are taps, which hide or show the buttons. Movements more up or down than across
+    // aren't swipes between pictures, such as the one up from the bottom edge to the Dock. A caught
+    // slide follows the finger at once.
+    if (!drag.moved && drag.goal === undefined) {
+      const across = Math.abs(raw - drag.from), down = Math.abs(e.touches[0].clientY - drag.y);
+      if (Math.max(across, down) < 10) return;
+      if (down > across) { drag = null; return; }
+    }
     drag.moved = true;
     drag.raw = raw;
     const [lo, hi] = ends();
