@@ -167,15 +167,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
 }
 .results .preview > * { grid-area: 1 / 1; }
-.results .preview img { cursor: default; filter: saturate(.9); background: none; }
-.results .preview img:not([src]), .results .preview img[src] ~ * { display: none; }
-.results .preview:has(img[src]) { background: none; border-color: transparent; }
+.results .preview img { position: relative; z-index: 1; cursor: default; filter: saturate(.9); background: none; animation: appear .6s ease-out; }
+.results .preview img:not([src]) { display: none; }
+.results .preview:not(:has(.tiles)) { background: none; border-color: transparent; }
 .results .preview ~ .empty { display: none; }
 .tiles { place-self: stretch; display: grid; gap: 2px; padding: 2px; }
 .tiles i { position: relative; background: var(--panel-2); }
 /* Fading an overlay's opacity runs on the GPU, where changing the tile's color would repaint it each frame. */
 .tiles i::after { content: ""; position: absolute; inset: 0; background: oklch(0.59 0.136 290); opacity: 0; animation: glow 4.26s linear infinite backwards; animation-delay: inherit; }
 @keyframes glow { 0%, 100% { opacity: 0; } 11.7%, 21.1% { opacity: 1; } 35.2% { opacity: 0; } }
+@keyframes appear { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tiles i::after { animation: none; } }
 
 .gallery-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; color: var(--muted); }

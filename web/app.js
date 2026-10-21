@@ -1072,7 +1072,7 @@ function showResults(images, version) {
 }
 
 // The live preview's frame. Until the first preview arrives, waves of light sweep diagonally across
-// square tiles, nine along the short side.
+// square tiles, nine along the short side. The preview fades in over them, then they go.
 function previewSlot(width = 16, height = 9) {
   let slot = $("results").querySelector(".preview");
   if (!slot) {
@@ -1088,7 +1088,7 @@ function previewSlot(width = 16, height = 9) {
         tiles.append(tile);
       }
     }
-    slot = el("div", { className: "preview" }, el("img", { alt: "Live preview" }), tiles);
+    slot = el("div", { className: "preview" }, el("img", { alt: "Live preview", onanimationend: () => tiles.remove() }), tiles);
     $("results").prepend(slot);
   }
   return slot;
