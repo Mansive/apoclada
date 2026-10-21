@@ -1721,10 +1721,8 @@ function bindViewer() {
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
   const area = $("viewer");
   // A tap on the picture hides or shows the buttons; one on the black space around it closes the
-  // viewer, like Close does. A tap that catches a slide does neither.
-  let caught = false;
+  // viewer, like Close does. A tap that catches a slide does neither (see touchstart).
   area.addEventListener("click", (e) => {
-    if (caught) return;
     if (e.target === $("v-img")) setBare(!area.classList.contains("bare"));
     else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
   });
@@ -1786,7 +1784,6 @@ function bindViewer() {
   };
   area.addEventListener("touchstart", (e) => {
     if (drag) letGo(nearest());
-    caught = false;
     for (const a of $("v-img").getAnimations()) a.finish();
     // Taps on the buttons are theirs alone, so a second tap on Next goes a page further rather than
     // catching the slide.
@@ -1811,12 +1808,13 @@ function bindViewer() {
       if (!sliding.moving) return;
       ({ strip, goal } = sliding);
       sliding = null;
-      caught = true;
+      // Catching isn't a tap or a long press, so it doesn't toggle the buttons or open the picture's menu.
+      e.preventDefault();
     }
     const [lo, hi] = ends(), dx = strip.dx;
     const raw = dx < lo ? lo + (dx - lo) * 3 : dx > hi ? hi + (dx - hi) * 3 : dx;
     drag = { strip, goal, x: e.touches[0].clientX - raw, y: e.touches[0].clientY, from: raw, raw, track: [{ raw, time: e.timeStamp }] };
-  }, { passive: true });
+  });
   area.addEventListener("touchmove", (e) => {
     if (pinch && e.touches.length === 2) {
       const f = fingers(e), c = middle(), img = $("v-img"), w = img.offsetWidth, h = img.offsetHeight;
