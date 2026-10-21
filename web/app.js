@@ -1609,9 +1609,9 @@ function bindViewer() {
     else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
   });
   // Grid rows only animate between lengths, and Safari won't start from a length set in the same
-  // moment as the change, so Fill's rows always hold the buttons' heights in pixels. The buttons sit
-  // at the rows' outer edges, so their heights stay their own even while the rows are closed. The
-  // zero heights of a closed viewer are skipped, or the rows would grow in from nothing on opening.
+  // moment as the change, so Fill's rows always hold the bars' heights in pixels. The bars sit at
+  // the rows' outer edges, so their heights stay their own even while the rows are closed. The zero
+  // heights of a closed viewer are skipped, or the rows would grow in from nothing on opening.
   const rows = new ResizeObserver(() => {
     if (area.hidden) return;
     area.style.setProperty("--top", `${area.querySelector(".viewer-top").offsetHeight}px`);
@@ -1619,6 +1619,8 @@ function bindViewer() {
   });
   rows.observe(area.querySelector(".viewer-top"));
   rows.observe(area.querySelector(".viewer-bar"));
+  // The image is sized from its shape in CSS, so small ones scale up to fill the space too.
+  $("v-img").onload = (e) => e.target.style.setProperty("--ar", e.target.naturalWidth / e.target.naturalHeight);
   // A mouse brings the buttons back when it moves and hides them after 3 s still, unless it rests on one.
   let idle;
   area.addEventListener("pointermove", (e) => {
