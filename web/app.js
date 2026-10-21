@@ -1293,6 +1293,54 @@ function step(delta) {
   showViewerImage();
 }
 
+// The neighbour `delta` away, laid over the picture's space to slide in beside it. Videos show their
+// thumbnail.
+function peekAt(delta) {
+  const item = viewer.list[viewer.index + delta];
+  if (!item) return null;
+  const peek = el("img", { className: "peek", alt: "" });
+  if (isVideo(item)) peek.src = thumbUrl(item);
+  else showImage(peek, item);
+  $("v-img").parentNode.append(peek);
+  return peek;
+}
+
+function shown() { return $("v-video").hidden ? $("v-img") : $("v-video"); }
+
+let sliding = false;
+
+// Slides the picture from `dx` off the screen, bringing in the neighbour a page width behind it, or
+// back to its place.
+async function slide(delta, peek, dx, turnPage) {
+  sliding = true;
+  const cur = shown();
+  const page = cur.parentNode.clientWidth * delta;
+  const to = turnPage ? -page : 0;
+  const timing = { duration: 250, easing: "cubic-bezier(.2, .7, .3, 1)" };
+  cur.style.transform = `translateX(${to}px)`;
+  peek.style.transform = `translateX(${to + page}px)`;
+  await Promise.all([
+    cur.animate({ transform: [`translateX(${dx}px)`, `translateX(${to}px)`] }, timing).finished,
+    peek.animate({ transform: [`translateX(${dx + page}px)`, `translateX(${to + page}px)`] }, timing).finished,
+  ]);
+  if (turnPage) {
+    step(delta);
+    // The neighbour's copy covers the real picture until it has loaded, so nothing blinks.
+    const img = shown();
+    if (img === $("v-img")) await new Promise((done) => { img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); });
+  }
+  cur.style.transform = "";
+  peek.remove();
+  sliding = false;
+}
+
+// Prev, Next and the arrow keys turn the page with the same slide a swipe ends in.
+function turn(delta) {
+  if (sliding || !viewer.list[viewer.index + delta]) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) step(delta);
+  else slide(delta, peekAt(delta), 0, true);
+}
+
 async function deleteCurrent() {
   const img = viewer.list[viewer.index];
   const res = await post("/studio/images/delete", img).catch(() => null);
@@ -1592,15 +1640,14 @@ async function extendCurrent() {
 
 function bindViewer() {
   $("v-close").onclick = closeViewer;
-  $("v-prev").onclick = () => step(-1);
-  $("v-next").onclick = () => step(1);
+  $("v-prev").onclick = () => turn(-1);
+  $("v-next").onclick = () => turn(1);
   $("v-delete").onclick = deleteCurrent;
   $("v-reuse").onclick = reuseCurrent;
   $("v-animate").onclick = () => (isVideo(viewer.list[viewer.index]) ? extendCurrent() : animateCurrent());
   $("v-reveal").onclick = revealCurrent;
   $("v-info").onclick = () => ($("v-info-panel").hidden ? showInfo() : ($("v-info-panel").hidden = true));
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
-  let startX = null;
   const area = $("viewer");
   // A tap on the picture hides or shows the buttons; one on the black space around it closes the
   // viewer, like Close does.
@@ -1629,20 +1676,49 @@ function bindViewer() {
     clearTimeout(idle);
     if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
   });
-  // Swipes on the video would fight with scrubbing its timeline, and swipes in Info with selecting
-  // its text, so neither changes pages.
-  area.addEventListener("touchstart", (e) => { startX = e.touches.length === 1 && !e.target.closest("video, .viewer-info") ? e.touches[0].clientX : null; }, { passive: true });
+  // A swipe drags the picture with its neighbour beside it. Letting go past a quarter of the width,
+  // or after a quick flick, turns the page; otherwise it slides back. Past the first or last picture
+  // it drags at a third of the finger's pace. Swipes on the video would fight with scrubbing its
+  // timeline, and swipes in Info with selecting its text, so neither moves anything.
+  const box = area.querySelector(".viewer-img");
+  let drag = null;
+  const letGo = (turnPage) => {
+    const { cur, dx, delta, peek } = drag;
+    drag = null;
+    if (peek) slide(delta, peek, dx, turnPage);
+    else {
+      cur.style.transform = "";
+      if (dx) cur.animate({ transform: [`translateX(${dx}px)`, "none"] }, { duration: 250, easing: "ease-out" });
+    }
+  };
+  area.addEventListener("touchstart", (e) => {
+    if (drag) letGo(false);
+    if (e.touches.length === 1 && !sliding && !e.target.closest("video, .viewer-info")) drag = { cur: shown(), x: e.touches[0].clientX, time: e.timeStamp, dx: 0 };
+  }, { passive: true });
+  area.addEventListener("touchmove", (e) => {
+    if (!drag) return;
+    const dx = e.touches[0].clientX - drag.x;
+    // Small movements are taps, which hide or show the buttons.
+    if (!drag.delta && Math.abs(dx) < 10) return;
+    const delta = dx < 0 ? 1 : -1;
+    if (delta !== drag.delta) {
+      drag.peek?.remove();
+      drag.delta = delta;
+      drag.peek = peekAt(delta);
+    }
+    drag.dx = drag.peek ? dx : dx / 3;
+    drag.cur.style.transform = `translateX(${drag.dx}px)`;
+    if (drag.peek) drag.peek.style.transform = `translateX(${drag.dx + delta * box.clientWidth}px)`;
+  }, { passive: true });
   area.addEventListener("touchend", (e) => {
-    if (startX === null) return;
-    const dx = e.changedTouches[0].clientX - startX;
-    if (Math.abs(dx) > 60) step(dx < 0 ? 1 : -1);
-    startX = null;
+    if (drag) letGo(Math.abs(drag.dx) > box.clientWidth / 4 || (Math.abs(drag.dx) > 30 && e.timeStamp - drag.time < 300));
   });
+  area.addEventListener("touchcancel", () => { if (drag) letGo(false); });
   document.addEventListener("keydown", (e) => {
     if ($("viewer").hidden) return;
     if (e.key === "Escape") closeViewer();
-    if (e.key === "ArrowLeft") step(-1);
-    if (e.key === "ArrowRight") step(1);
+    if (e.key === "ArrowLeft") turn(-1);
+    if (e.key === "ArrowRight") turn(1);
   });
 }
 
