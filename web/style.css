@@ -137,7 +137,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; white-space: nowrap; min-height: 44px; }
 .switch input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
 .stepper { justify-self: start; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
-.stepper button { border: 0; background: none; width: 44px; height: 44px; font-size: 22px; }
+.stepper button { border: 0; background: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; }
 .stepper output { min-width: 24px; text-align: center; }
 
 .actions { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); }
