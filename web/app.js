@@ -1283,6 +1283,15 @@ function showViewerImage() {
   $("v-hint").hidden = !video;
   if (video) setBare(false);
   $("v-pos").textContent = list.length > 1 ? `${viewer.index + 1} / ${list.length}` : "";
+  // Decodes the next pictures each way ahead of time; otherwise Safari decodes one as it first slides
+  // into view, and the slide stalls for a couple of frames.
+  for (const k of [-2, -1, 1, 2]) {
+    const near = list[viewer.index + k];
+    if (!near || isVideo(near)) continue;
+    const img = new Image();
+    showImage(img, near);
+    img.decode().catch(() => {});
+  }
   $("v-prev").disabled = viewer.index === 0;
   $("v-next").disabled = viewer.index === list.length - 1;
   if (!$("v-info-panel").hidden) showInfo();
@@ -1329,20 +1338,31 @@ function within(goal) { return Math.min(Math.max(goal, -viewer.index), viewer.li
 // The slide playing, if any. Its animations are dropped once it has played.
 let sliding = null;
 
-// Slides the strip until the picture `goal` pages along is in place, then shows it for real. The
-// slide starts at the speed the finger let go at (`v`, px/ms) and eases to a stop, so nothing jolts.
+// Where a critically damped spring pulls the strip from `from` to `to`, every 1/60 s until it
+// settles. It starts at the finger's speed (`v`, px/ms), capped so it doesn't overshoot. Stiffness 13
+// matches Photos' paging, measured from screen recordings.
+function spring(from, to, v) {
+  const k = 13, c1 = from - to;
+  let c2 = v * 1000 + k * c1;
+  if (c1 * c2 < 0) c2 = 0;
+  const xs = [];
+  for (let t = 0; t < 2; t += 1 / 60) {
+    const y = (c1 + c2 * t) * Math.exp(-k * t);
+    if (t > 0.1 && Math.abs(y) < 0.5) break;
+    xs.push(to + y);
+  }
+  return [...xs, to];
+}
+
+// Springs the strip until the picture `goal` pages along is in place, then shows it for real.
 async function slide(strip, goal, v = 0) {
   const cur = shown();
   const w = pageWidth();
-  const dist = -goal * w - strip.dx;
-  const duration = 350 + 100 * Math.min(Math.abs(dist) / w, 3);
-  // A cubic-bezier's starting speed is y1 / x1 times the average.
-  const y1 = dist ? Math.min(Math.max(0.3 * v * duration / dist, 0), 1) : 0;
-  const timing = { duration, easing: `cubic-bezier(.3, ${y1}, .35, 1)` };
+  const xs = spring(strip.dx, -goal * w, v);
   addPeeks(strip, Math.min(goal, 0), Math.max(goal, 0));
   const anims = [[0, cur], ...strip.peeks].filter(([, e]) => e).map(([k, e]) => {
     e.style.transform = `translateX(${(k - goal) * w}px)`;
-    return e.animate({ transform: [`translateX(${strip.dx + k * w}px)`, `translateX(${(k - goal) * w}px)`] }, timing);
+    return e.animate({ transform: xs.map((x) => `translateX(${x + k * w}px)`) }, (xs.length - 1) * 1000 / 60);
   });
   sliding = { cur, strip, goal, anims };
   // A touch can catch the slide and carry on from there as a drag, which cancels it.
@@ -1745,8 +1765,8 @@ function bindViewer() {
     // The last 100 ms of movement give the speed at letting go.
     drag.track.push({ raw, time: e.timeStamp });
     while (e.timeStamp - drag.track[0].time > 100) drag.track.shift();
-    // Small movements are taps, which hide or show the buttons.
-    if (!drag.moved && Math.abs(raw - drag.from) < 10) return;
+    // Small movements are taps, which hide or show the buttons. A caught slide follows the finger at once.
+    if (!drag.moved && drag.goal === undefined && Math.abs(raw - drag.from) < 10) return;
     drag.moved = true;
     drag.raw = raw;
     const [lo, hi] = ends();
