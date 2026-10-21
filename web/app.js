@@ -1623,7 +1623,7 @@ function renderPack(p, dl, active) {
   const running = mine && active;
   const state = p.installed ? "Installed"
     : running ? (dl.total ? `${Math.floor((dl.done / dl.total) * 100)}% · ${gb(dl.done)} of ${gb(dl.total)}` : "Starting…")
-    : p.missing ? `${gb(p.missing)} to download` : "";
+    : [p.missing && `${gb(p.missing)} to download`, p.manual && !p.manual.found && "Civitai model needed"].filter(Boolean).join(" · ");
   const button = running
     ? el("button", { type: "button", className: "ghost danger", textContent: "Stop", onclick: () => setupAction("cancel") })
     : p.missing > 0 && el("button", {
@@ -1685,7 +1685,7 @@ async function loadPrefs(change) {
         : "Lossy looks the same as PNG at normal viewing, but isn't pixel-identical: very fine detail shifts slightly." }),
     jxl && el("span", { className: "note", textContent: "Safari and Chrome 155 or newer show JPEG XL; other browsers here see a PNG copy. Many apps outside the browser can't open .jxl files yet." }),
     el("span", { className: "note", textContent: "Applies to new images from every device. Existing images keep their format." }),
-    !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC." }),
+    !p.jxl_available && el("span", { className: "note", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC." }),
     !p.jxl_available && el("div", { className: "actions-row" },
       el("button", { type: "button", className: "ghost", textContent: "Install and restart", onclick: installRequirements })),
   ].filter(Boolean));
