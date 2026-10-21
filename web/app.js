@@ -947,7 +947,7 @@ async function generate() {
   // the first preview loads.
   if (!$("results").querySelector(".preview")) {
     const { width, height } = video ? videoDimensions(settings.video) : dimensions(settings.aspect, settings.mp);
-    previewSlot().style.aspectRatio = `${width} / ${height}`;
+    previewSlot(width, height).style.aspectRatio = `${width} / ${height}`;
   }
   if (window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -1071,13 +1071,24 @@ function showResults(images, version) {
   while (box.children.length > 12) box.lastElementChild.remove();
 }
 
-// The live preview's frame, showing twinkling stars until the first preview arrives.
-function previewSlot() {
+// The live preview's frame. Until the first preview arrives, waves of light sweep diagonally across
+// square tiles, nine along the short side.
+function previewSlot(width = 16, height = 9) {
   let slot = $("results").querySelector(".preview");
   if (!slot) {
-    slot = el("div", { className: "preview" },
-      el("img", { alt: "Live preview" }),
-      el("div", { className: "waiting" }, el("div", { className: "stars" }, el("span", {}, "✦"), el("span", {}, "✧"), el("span", {}, "✦")), "Dreaming it up…"));
+    const cols = Math.round(9 * Math.max(1, width / height));
+    const rows = Math.round(9 * Math.max(1, height / width));
+    const tiles = el("div", { className: "tiles" });
+    tiles.style.gridTemplate = `repeat(${rows}, 1fr) / repeat(${cols}, 1fr)`;
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        // A wave takes 2.76 s to cross any shape, so the next one starts as the last tile goes dark.
+        const tile = el("i");
+        tile.style.animationDelay = `${((x + y) / (cols + rows - 2)) * 2.76}s`;
+        tiles.append(tile);
+      }
+    }
+    slot = el("div", { className: "preview" }, el("img", { alt: "Live preview" }), tiles, el("div", { className: "waiting" }, "Dreaming it up…"));
     $("results").prepend(slot);
   }
   return slot;
