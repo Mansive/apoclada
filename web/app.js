@@ -1245,7 +1245,7 @@ function openViewer(list, index) {
 }
 
 // Hides the buttons around the image, except on videos, whose taps belong to the video's own
-// controls, and while Info is open. In Fit Both their rows close up so the image grows.
+// controls, and while Info is open. Their rows close up to give the image their space.
 function setBare(on) {
   $("viewer").classList.toggle("bare", on && !isVideo(viewer.list[viewer.index]) && $("v-info-panel").hidden);
 }
@@ -1722,7 +1722,7 @@ function bindViewer() {
   $("v-info").onclick = () => ($("v-info-panel").hidden ? showInfo() : ($("v-info-panel").hidden = true));
   $("v-info-close").onclick = () => { $("v-info-panel").hidden = true; };
   const area = $("viewer");
-  // Fit Both lets the image grow into the buttons' space as they hide; Original keeps it its size.
+  // Fit Both scales the image to fill the space; Original shows it at its own size where it fits.
   // The choice is per device.
   const setOriginal = (on) => {
     area.classList.toggle("original", on);
@@ -1752,7 +1752,10 @@ function bindViewer() {
   rows.observe(area.querySelector(".viewer-top"));
   rows.observe(area.querySelector(".viewer-bar"));
   // The image is sized from its shape in CSS, so small ones scale up to fill the space too.
-  $("v-img").onload = (e) => e.target.style.setProperty("--ar", e.target.naturalWidth / e.target.naturalHeight);
+  $("v-img").onload = ({ target: img }) => {
+    img.style.setProperty("--ar", img.naturalWidth / img.naturalHeight);
+    img.style.setProperty("--w", `${img.naturalWidth}px`);
+  };
   // A mouse brings the buttons back when it moves and hides them after 3 s still, unless it rests on one.
   let idle;
   area.addEventListener("pointermove", (e) => {
