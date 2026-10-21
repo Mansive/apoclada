@@ -1292,6 +1292,7 @@ function showViewerImage() {
   $("v-save").download = item.filename;
   $("v-animate").hidden = !videoFiles;
   $("v-animate").textContent = video ? "Extend" : "Animate";
+  $("v-animate").title = video ? "Continues the video in Create, sound included" : "Starts a video from the image in Create";
   $("v-hint").hidden = !video;
   // Videos keep their buttons, so their size never changes.
   $("v-size").hidden = video;
@@ -1727,6 +1728,7 @@ function bindViewer() {
   const setOriginal = (on) => {
     area.classList.toggle("original", on);
     $("v-size").setAttribute("aria-label", on ? "Original" : "Fit Both");
+    $("v-size").title = on ? "Original: images show at their own size. Switches to Fit Both" : "Fit Both: images scale to fill the space. Switches to Original";
   };
   setOriginal(load("moss-studio-viewer-original", false));
   $("v-size").onclick = () => {
