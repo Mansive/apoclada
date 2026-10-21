@@ -1329,11 +1329,16 @@ function within(goal) { return Math.min(Math.max(goal, -viewer.index), viewer.li
 // The slide playing, if any. Its animations are dropped once it has played.
 let sliding = null;
 
-// Slides the strip until the picture `goal` pages along is in place, then shows it for real.
-async function slide(strip, goal) {
+// Slides the strip until the picture `goal` pages along is in place, then shows it for real. The
+// slide starts at the speed the finger let go at (`v`, px/ms) and eases to a stop, so nothing jolts.
+async function slide(strip, goal, v = 0) {
   const cur = shown();
   const w = pageWidth();
-  const timing = { duration: 450, easing: "cubic-bezier(.2, .7, .3, 1)" };
+  const dist = -goal * w - strip.dx;
+  const duration = 350 + 100 * Math.min(Math.abs(dist) / w, 3);
+  // A cubic-bezier's starting speed is y1 / x1 times the average.
+  const y1 = dist ? Math.min(Math.max(0.3 * v * duration / dist, 0), 1) : 0;
+  const timing = { duration, easing: `cubic-bezier(.3, ${y1}, .35, 1)` };
   addPeeks(strip, Math.min(goal, 0), Math.max(goal, 0));
   const anims = [[0, cur], ...strip.peeks].filter(([, e]) => e).map(([k, e]) => {
     e.style.transform = `translateX(${(k - goal) * w}px)`;
@@ -1698,8 +1703,8 @@ function bindViewer() {
     clearTimeout(idle);
     if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
   });
-  // A swipe drags the strip of pictures. Letting go after 60 px, or after a quick flick, slides a
-  // page on the way it moved; otherwise it settles on the nearest picture. A touch during a slide
+  // A swipe drags the strip of pictures. Letting go mid-flick, or after a 60 px drag, slides a page
+  // on the way it moved; otherwise it settles on the nearest picture. A touch during a slide
   // catches it where it is: holding pauses it, and a swipe goes a page further on from where the
   // slide was headed, so two quick swipes turn two pages. Past the first or last picture the strip
   // moves at a third of the finger's pace. Swipes on the video would fight with scrubbing its
@@ -1708,17 +1713,18 @@ function bindViewer() {
   let drag = null;
   const ends = () => [-(viewer.list.length - 1 - viewer.index) * box.clientWidth, viewer.index * box.clientWidth];
   const nearest = () => within(Math.round(-drag.strip.dx / box.clientWidth));
-  const letGo = (goal) => {
+  const letGo = (goal, v) => {
     const { strip } = drag;
     drag = null;
-    if (strip.dx || goal) slide(strip, goal);
+    if (strip.dx || goal) slide(strip, goal, v);
     else for (const peek of strip.peeks.values()) peek?.remove();
   };
   area.addEventListener("touchstart", (e) => {
     if (drag) letGo(nearest());
     caught = false;
     if (e.touches.length !== 1 || e.target.closest("video, .viewer-info")) return;
-    let strip = { dx: 0, peeks: new Map() }, goal = 0;
+    // `goal` is where a caught slide was headed.
+    let strip = { dx: 0, peeks: new Map() }, goal;
     if (sliding) {
       // After a turn, the new picture takes a moment to load, and can't be caught.
       if (!sliding.anims) return;
@@ -1731,11 +1737,14 @@ function bindViewer() {
     }
     const [lo, hi] = ends(), dx = strip.dx;
     const raw = dx < lo ? lo + (dx - lo) * 3 : dx > hi ? hi + (dx - hi) * 3 : dx;
-    drag = { strip, goal, x: e.touches[0].clientX - raw, from: raw, raw, time: e.timeStamp };
+    drag = { strip, goal, x: e.touches[0].clientX - raw, from: raw, raw, track: [{ raw, time: e.timeStamp }] };
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
     if (!drag) return;
     const raw = e.touches[0].clientX - drag.x;
+    // The last 100 ms of movement give the speed at letting go.
+    drag.track.push({ raw, time: e.timeStamp });
+    while (e.timeStamp - drag.track[0].time > 100) drag.track.shift();
     // Small movements are taps, which hide or show the buttons.
     if (!drag.moved && Math.abs(raw - drag.from) < 10) return;
     drag.moved = true;
@@ -1745,11 +1754,14 @@ function bindViewer() {
   }, { passive: true });
   area.addEventListener("touchend", (e) => {
     if (!drag) return;
+    const first = drag.track[0], last = drag.track.at(-1);
+    const v = drag.moved && e.timeStamp - last.time < 100 && last.time > first.time ? (last.raw - first.raw) / (last.time - first.time) : 0;
     const moved = drag.raw - drag.from;
+    const dir = Math.abs(v) > 0.3 ? -Math.sign(v) : Math.abs(moved) > 60 ? -Math.sign(moved) : 0;
     const page = -drag.strip.dx / box.clientWidth;
-    if (Math.abs(moved) > 60 || (Math.abs(moved) > 20 && e.timeStamp - drag.time < 300)) {
-      letGo(within(moved < 0 ? Math.max(drag.goal + 1, Math.ceil(page)) : Math.min(drag.goal - 1, Math.floor(page))));
-    } else letGo(nearest());
+    if (dir > 0) letGo(within(Math.max(Math.ceil(page), (drag.goal ?? -Infinity) + 1)), v);
+    else if (dir < 0) letGo(within(Math.min(Math.floor(page), (drag.goal ?? Infinity) - 1)), v);
+    else letGo(nearest(), v);
   });
   area.addEventListener("touchcancel", () => { if (drag) letGo(nearest()); });
   document.addEventListener("keydown", (e) => {
