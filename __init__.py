@@ -192,9 +192,9 @@ class SaveImageJXL(SaveImage):
         for batch_number, image in enumerate(images):
             img = Image.fromarray(np.clip(255. * image.cpu().numpy(), 0, 255).astype(np.uint8))
             file = f"{filename.replace('%batch_num%', str(batch_number))}_{counter:05}_.jxl"
-            # Quality 90 is libjxl's distance 1, its "visually lossless" target.
+            # Quality 95 is libjxl's distance 0.55, a margin under its "visually lossless" distance 1.
             buf = BytesIO()
-            img.save(buf, "JXL", lossless=lossless, quality=90, effort=7)
+            img.save(buf, "JXL", lossless=lossless, quality=95, effort=7)
             data = buf.getvalue()
             # libjxl splits the codestream into jxlp boxes around metadata, which Safari can't decode,
             # so the container is built here with Exif ahead of one jxlc box.

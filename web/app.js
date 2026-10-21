@@ -1669,7 +1669,7 @@ async function setupAction(action, pack) {
   loadSetup();
 }
 
-// Sizes are from a 1 MP MOSS image: PNG 1.4 MB, lossless JPEG XL 0.9 MB, lossy (libjxl distance 1) 0.15 MB.
+// Sizes are from a 1 MP MOSS image: PNG 1.4 MB, lossless JPEG XL 0.9 MB, lossy (quality 95) 0.23 MB.
 async function loadPrefs(change) {
   const p = await (change ? post("/studio/prefs", change) : fetch("/studio/prefs")).then((r) => r.json()).catch(() => null);
   if (!p) { toast("Can't reach the PC"); return; }
@@ -1692,7 +1692,7 @@ async function loadPrefs(change) {
       radio("JPEG XL", "Smaller files", jxl, { image_format: "jxl" }, !p.jxl_available)),
     jxl && group(
       radio("Lossless", "About 65% of PNG", p.jxl_lossless, { jxl_lossless: true }),
-      radio("Lossy", "About 10% of PNG", !p.jxl_lossless, { jxl_lossless: false })),
+      radio("Lossy", "About 15% of PNG", !p.jxl_lossless, { jxl_lossless: false })),
     el("span", { className: "note", textContent: !jxl
       ? "PNG opens in every app and browser. A 1 MP image is about 1.4 MB."
       : p.jxl_lossless
