@@ -1324,12 +1324,14 @@ function addPeeks(strip, from, to) {
   for (let k = from; k <= to; k++) if (k && !strip.peeks.has(k)) strip.peeks.set(k, peekAt(k));
 }
 
+// translate3d gives each picture a layer of its own that Safari moves as it is. Repainting them
+// instead left slivers of their edges behind in the black space.
 function layOut(strip, dx) {
   const w = pageWidth();
   strip.dx = dx;
   addPeeks(strip, Math.floor(-dx / w), Math.ceil(-dx / w));
-  shown().style.transform = `translateX(${dx}px)`;
-  for (const [k, peek] of strip.peeks) if (peek) peek.style.transform = `translateX(${dx + k * w}px)`;
+  shown().style.transform = `translate3d(${dx}px, 0, 0)`;
+  for (const [k, peek] of strip.peeks) if (peek) peek.style.transform = `translate3d(${dx + k * w}px, 0, 0)`;
 }
 
 // The page the strip can go to nearest `goal`.
