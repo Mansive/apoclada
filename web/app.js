@@ -628,13 +628,13 @@ function imageSize(url) {
 
 // − and + beside each slider move it one step, which is hard to do by dragging on a touch screen.
 // They're drawn as SVG because text glyphs sit at a different height in each font.
-const MINUS = "M3 8h10", PLUS = "M3 8h10M8 3v10";
+const MINUS = "M19 13H5v-2h14z", PLUS = "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z";
 function addSliderButtons() {
   for (const slider of document.querySelectorAll("input[type=range]")) {
     const nudge = (path, label, move) => {
       const btn = el("button", {
         type: "button", onclick: () => { move(); slider.dispatchEvent(new Event("input")); },
-        innerHTML: `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${path}" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+        innerHTML: `<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="${path}"/></svg>`,
       });
       btn.setAttribute("aria-label", label);
       return btn;
