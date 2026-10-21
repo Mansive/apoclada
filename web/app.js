@@ -1088,7 +1088,7 @@ function previewSlot(width = 16, height = 9) {
         tiles.append(tile);
       }
     }
-    slot = el("div", { className: "preview" }, el("img", { alt: "Live preview" }), tiles, el("div", { className: "waiting" }, "Dreaming it up…"));
+    slot = el("div", { className: "preview" }, el("img", { alt: "Live preview" }), tiles);
     $("results").prepend(slot);
   }
   return slot;
