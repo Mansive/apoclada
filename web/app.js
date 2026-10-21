@@ -214,7 +214,7 @@ let turboLora = null;
 let rapidAdapter = null;
 let videoFiles = null;
 // Setup's choices, shared by every device through the PC; generate() refreshes them before each image.
-let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] }, viewer_fill: true };
+let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] } };
 // Safari and Chrome 155+ show JPEG XL. Other browsers get .jxl images as PNG copies made by the PC.
 const JXL_PROBE = "data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==";
 let jxlShown = false;
@@ -1228,13 +1228,12 @@ function openViewer(list, index) {
   viewer = { list, index };
   $("viewer").hidden = false;
   $("viewer").classList.remove("bare");
-  $("viewer").classList.toggle("fill", prefs.viewer_fill);
   document.body.style.overflow = "hidden";
   showViewerImage();
 }
 
 // Hides the buttons around the image, except on videos, whose taps belong to the video's own
-// controls, and while Info is open. In Fill mode their rows close up so the image grows.
+// controls, and while Info is open. Their rows close up so the image grows.
 function setBare(on) {
   $("viewer").classList.toggle("bare", on && !isVideo(viewer.list[viewer.index]) && $("v-info-panel").hidden);
 }
@@ -1716,7 +1715,7 @@ function bindViewer() {
     else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
   });
   // Grid rows only animate between lengths, and Safari won't start from a length set in the same
-  // moment as the change, so Fill's rows always hold the bars' heights in pixels. The bars sit at
+  // moment as the change, so the rows always hold the bars' heights in pixels. The bars sit at
   // the rows' outer edges, so their heights stay their own even while the rows are closed. The zero
   // heights of a closed viewer are skipped, or the rows would grow in from nothing on opening.
   const rows = new ResizeObserver(() => {
@@ -1743,9 +1742,11 @@ function bindViewer() {
   // moves at a third of the finger's pace. Swipes on the video would fight with scrubbing its
   // timeline, and swipes in Info with selecting its text, so neither moves anything.
   //
-  // Two fingers zoom the picture about the point between them, up to 5×. Zoomed in, one finger moves
-  // it about instead of turning the page. Letting go, it moves back to fill the space where it's big
-  // enough to, and to the middle where it isn't; zoomed out past its size, it springs back to it.
+  // Two fingers zoom the picture about the point between them, up to 5×, and zooming in hides the
+  // buttons. Zoomed in, one finger moves it about instead of turning the page. Letting go, it moves
+  // back to fill the space where it's big enough to, and to the middle where it isn't; zoomed out
+  // past its size, it springs back to it. The picture grows as the buttons' rows close, so a pinch
+  // keeps its size on screen and the point under the fingers as fractions of the picture.
   const box = area.querySelector(".viewer-img");
   let drag = null, pinch = null, pan = null;
   const fingers = (e) => {
@@ -1778,9 +1779,10 @@ function bindViewer() {
     if (e.target.closest("video, .viewer-info, button, a")) return;
     // A second finger zooms, unless the first has already sent the strip sliding.
     if (e.touches.length === 2 && !sliding && !$("v-img").hidden) {
-      const f = fingers(e), c = middle(), z = zoom ?? { s: 1, x: 0, y: 0 };
+      const f = fingers(e), c = middle(), z = zoom ?? { s: 1, x: 0, y: 0 }, img = $("v-img");
+      const w = img.offsetWidth * z.s, h = img.offsetHeight * z.s;
       pan = null;
-      pinch = { d: f.d, s: z.s, x: (f.x - c.x - z.x) / z.s, y: (f.y - c.y - z.y) / z.s };
+      pinch = { d: f.d, w, x: (f.x - c.x - z.x) / w, y: (f.y - c.y - z.y) / h };
       return;
     }
     if (e.touches.length !== 1) return;
@@ -1803,8 +1805,10 @@ function bindViewer() {
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
     if (pinch && e.touches.length === 2) {
-      const f = fingers(e), c = middle(), s = Math.min(Math.max(pinch.s * f.d / pinch.d, 0.5), 5);
-      setZoom({ s, x: f.x - c.x - s * pinch.x, y: f.y - c.y - s * pinch.y });
+      const f = fingers(e), c = middle(), img = $("v-img"), w = img.offsetWidth, h = img.offsetHeight;
+      const s = Math.min(Math.max(pinch.w * f.d / pinch.d / w, 0.5), 5);
+      if (s > 1) setBare(true);
+      setZoom({ s, x: f.x - c.x - pinch.x * s * w, y: f.y - c.y - pinch.y * s * h });
     }
     if (pan) setZoom({ s: zoom.s, x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
     if (!drag) return;
@@ -1959,14 +1963,6 @@ async function loadPrefs(change) {
       : `${hevc ? "x265" : "x264"} encodes the video on the CPU, a few seconds slower than a graphics card.${encoders.length > 1 ? "" : " No NVIDIA or AMD video encoder was found."}` }),
     el("span", { className: "note", textContent: "Applies to new videos from every device. Existing videos keep their format." }),
   ].filter(Boolean));
-  $("viewer-mode").replaceChildren(
-    group(
-      radio("Fill the screen", "Image grows", p.viewer_fill, { viewer_fill: true }),
-      radio("Keep size", "Image stays put", !p.viewer_fill, { viewer_fill: false })),
-    el("span", { className: "note", textContent: "Tap an image in the viewer to hide or show its buttons. With a mouse, they also hide after 3 seconds without movement. Videos always keep them." }),
-    el("span", { className: "note", textContent: p.viewer_fill
-      ? "With the buttons hidden, the image grows into their space."
-      : "The buttons fade out and the image stays where it is." }));
 }
 
 async function loadUpdates(check) {

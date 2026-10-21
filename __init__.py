@@ -313,7 +313,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (Apoclada)", "Apo
 
 # Choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
 PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
-PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True, "video_codec": "h264", "video_encoder": None, "viewer_fill": True}
+PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True, "video_codec": "h264", "video_encoder": None}
 
 
 def load_prefs():
@@ -348,8 +348,6 @@ async def studio_prefs_save(request):
         prefs["image_format"] = data["image_format"]
     if isinstance(data.get("jxl_lossless"), bool):
         prefs["jxl_lossless"] = data["jxl_lossless"]
-    if isinstance(data.get("viewer_fill"), bool):
-        prefs["viewer_fill"] = data["viewer_fill"]
     if data.get("video_codec") in VIDEO_ENCODERS:
         prefs["video_codec"] = data["video_codec"]
     if data.get("video_encoder") in VIDEO_ENCODERS["h264"]:
