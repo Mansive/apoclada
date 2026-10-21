@@ -219,7 +219,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   /* Otherwise a long press anywhere selects the nearest text, such as the count at the top. */
   -webkit-user-select: none; user-select: none;
   /* Zooming the page, even by tapping Prev or Next quickly, would leave gaps around the viewer that
-     show the gallery through. */
+     show the gallery through. Pinches zoom the picture alone instead (app.js). */
   touch-action: pan-x pan-y;
 }
 /* Hidden buttons stay focusable, and tabbing to one brings them all back. While Fill's rows close,

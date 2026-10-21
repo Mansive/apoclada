@@ -1263,6 +1263,7 @@ function resetResultVideos() {
 function showViewerImage() {
   const { list, index } = viewer;
   if (!list.length) { closeViewer(); return; }
+  if (zoom) setZoom(null);
   viewer.index = Math.min(Math.max(index, 0), list.length - 1);
   const item = list[viewer.index];
   const video = isVideo(item);
@@ -1340,6 +1341,16 @@ function within(goal) { return Math.min(Math.max(goal, -viewer.index), viewer.li
 // The slide playing, if any. It stops `moving` once in place, while the picture it turned to loads.
 let sliding = null;
 
+// How far the picture is zoomed in (`s`) and moved from its place (`x`, `y`, px), or null.
+let zoom = null;
+
+function setZoom(z, ease) {
+  const img = $("v-img"), from = img.style.transform || "none";
+  zoom = z;
+  img.style.transform = z ? `translate(${z.x}px, ${z.y}px) scale(${z.s})` : "";
+  if (ease) img.animate({ transform: [from, img.style.transform || "none"] }, { duration: 300, easing: "ease-out" });
+}
+
 // Springs the strip until the picture `goal` pages along is in place, then shows it for real. The
 // spring is critically damped and starts at the finger's speed (`v`, px/ms), capped so it doesn't
 // overshoot; stiffness 13 matches Photos' paging, measured from screen recordings. It's drawn frame by
@@ -1382,6 +1393,7 @@ function turn(delta) {
   if (sliding && !sliding.moving) return;
   const { strip, goal, v } = sliding ?? { strip: { dx: 0, peeks: new Map() }, goal: 0, v: 0 };
   if (!viewer.list[viewer.index + goal + delta]) return;
+  if (zoom) setZoom(null);
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) step(delta);
   else slide(strip, goal + delta, v);
 }
@@ -1729,8 +1741,25 @@ function bindViewer() {
   // slide was headed, so two quick swipes turn two pages. Past the first or last picture the strip
   // moves at a third of the finger's pace. Swipes on the video would fight with scrubbing its
   // timeline, and swipes in Info with selecting its text, so neither moves anything.
+  //
+  // Two fingers zoom the picture about the point between them, up to 5×. Zoomed in, one finger moves
+  // it about instead of turning the page. Letting go, it moves back to fill the space where it's big
+  // enough to, and to the middle where it isn't; zoomed out past its size, it springs back to it.
   const box = area.querySelector(".viewer-img");
-  let drag = null;
+  let drag = null, pinch = null, pan = null;
+  const fingers = (e) => {
+    const [a, b] = e.touches, r = box.getBoundingClientRect();
+    return { x: (a.clientX + b.clientX) / 2 - r.left, y: (a.clientY + b.clientY) / 2 - r.top, d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) };
+  };
+  // The picture's middle in its space, before it's zoomed.
+  const middle = () => { const img = $("v-img"); return { x: img.offsetLeft + img.offsetWidth / 2, y: img.offsetTop + img.offsetHeight / 2 }; };
+  const fit = (t, c, half, size) => (half * 2 <= size ? size / 2 - c : Math.min(Math.max(t, size - half - c), half - c));
+  const settle = () => {
+    pinch = pan = null;
+    if (zoom.s <= 1) return setZoom(null, true);
+    const img = $("v-img"), c = middle();
+    setZoom({ s: zoom.s, x: fit(zoom.x, c.x, img.offsetWidth * zoom.s / 2, box.clientWidth), y: fit(zoom.y, c.y, img.offsetHeight * zoom.s / 2, box.clientHeight) }, true);
+  };
   const ends = () => [-(viewer.list.length - 1 - viewer.index) * box.clientWidth, viewer.index * box.clientWidth];
   const nearest = () => within(Math.round(-drag.strip.dx / box.clientWidth));
   const letGo = (goal, v) => {
@@ -1742,7 +1771,20 @@ function bindViewer() {
   area.addEventListener("touchstart", (e) => {
     if (drag) letGo(nearest());
     caught = false;
-    if (e.touches.length !== 1 || e.target.closest("video, .viewer-info")) return;
+    for (const a of $("v-img").getAnimations()) a.finish();
+    if (e.target.closest("video, .viewer-info")) return;
+    // A second finger zooms, unless the first has already sent the strip sliding.
+    if (e.touches.length === 2 && !sliding && !$("v-img").hidden) {
+      const f = fingers(e), c = middle(), z = zoom ?? { s: 1, x: 0, y: 0 };
+      pan = null;
+      pinch = { d: f.d, s: z.s, x: (f.x - c.x - z.x) / z.s, y: (f.y - c.y - z.y) / z.s };
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    if (zoom) {
+      pan = { x: e.touches[0].clientX - zoom.x, y: e.touches[0].clientY - zoom.y };
+      return;
+    }
     // `goal` is where a caught slide was headed.
     let strip = { dx: 0, peeks: new Map() }, goal;
     if (sliding) {
@@ -1757,6 +1799,11 @@ function bindViewer() {
     drag = { strip, goal, x: e.touches[0].clientX - raw, from: raw, raw, track: [{ raw, time: e.timeStamp }] };
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
+    if (pinch && e.touches.length === 2) {
+      const f = fingers(e), c = middle(), s = Math.min(Math.max(pinch.s * f.d / pinch.d, 0.5), 5);
+      setZoom({ s, x: f.x - c.x - s * pinch.x, y: f.y - c.y - s * pinch.y });
+    }
+    if (pan) setZoom({ s: zoom.s, x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
     if (!drag) return;
     const raw = e.touches[0].clientX - drag.x;
     // The last 100 ms of movement give the speed at letting go.
@@ -1770,6 +1817,7 @@ function bindViewer() {
     layOut(drag.strip, raw < lo ? lo + (raw - lo) / 3 : raw > hi ? hi + (raw - hi) / 3 : raw);
   }, { passive: true });
   area.addEventListener("touchend", (e) => {
+    if (pinch || pan) settle();
     if (!drag) return;
     const first = drag.track[0], last = drag.track.at(-1);
     const v = drag.moved && e.timeStamp - last.time < 100 && last.time > first.time ? (last.raw - first.raw) / (last.time - first.time) : 0;
@@ -1780,7 +1828,10 @@ function bindViewer() {
     else if (dir < 0) letGo(within(Math.min(Math.floor(page), (drag.goal ?? Infinity) - 1)), v);
     else letGo(nearest(), v);
   });
-  area.addEventListener("touchcancel", () => { if (drag) letGo(nearest()); });
+  area.addEventListener("touchcancel", () => {
+    if (pinch || pan) settle();
+    if (drag) letGo(nearest());
+  });
   document.addEventListener("keydown", (e) => {
     if ($("viewer").hidden) return;
     if (e.key === "Escape") closeViewer();
