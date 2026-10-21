@@ -72,20 +72,21 @@ const MOSS_NOTES = {
 const MOSS_SAMPLER = { sampler: "euler", scheduler: "sgm_uniform" };
 const MODES = {
   full: {
-    tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "Best results are achieved with 50 or more steps.", ...MOSS_NOTES,
-    unused: {}, build: buildMossWorkflow,
+    tuning: { steps: 50, cfg: 3, shift: 5, slgLayer: "22", ...MOSS_SAMPLER }, steps: [10, 80], note: "50 or more is recommended.", ...MOSS_NOTES,
+    label: "Quality", unused: {}, build: buildMossWorkflow,
   },
   turbo: {
     tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES,
     label: "Turbo", unused: distilledUnused("Turbo"), build: buildMossWorkflow,
     file: () => turboLora, node: "LoraLoaderModelOnly", missing: "This image used Turbo mode, but its LoRA is missing on the PC",
   },
-  // darask0's rapid-moss adapter brings its own sampler and sigmas, so only the step count applies.
+  // Fast is darask0's rapid-moss adapter, which brings its own sampler and sigmas, so only the step
+  // count applies. Its id stays "rapid" so saved settings carry over.
   rapid: {
     tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
     ...MOSS_NOTES, sizeNote: "Trained at about 1 MP. Other sizes are untested.",
-    label: "Rapid", unused: distilledUnused("Rapid", "shift", "sampler", "scheduler"), build: buildRapidWorkflow,
-    file: () => rapidAdapter, node: "RapidMOSSAdapter", missing: "This image used Rapid mode, which needs the rapid-moss node and adapter on the PC",
+    label: "Fast", unused: distilledUnused("Fast", "shift", "sampler", "scheduler"), build: buildRapidWorkflow,
+    file: () => rapidAdapter, node: "RapidMOSSAdapter", missing: "This image used Fast mode, which needs the rapid-moss node and adapter on the PC",
   },
   // Krea 2's shift of 1.15 sits between MOSS's half steps.
   krea2: {
@@ -93,10 +94,10 @@ const MODES = {
     sizeNote: "1 MP is the official default.",
     cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
     family: "krea2", prompt: KREA2_PROMPT, shiftStep: 0.05, build: buildKrea2Workflow,
-    unused: { mode: "Krea 2 models have no Turbo or Rapid mode", slg: "Not used with Krea 2 models" },
+    unused: { mode: "Krea 2 models have no Turbo or Fast mode", slg: "Not used with Krea 2 models" },
   },
 };
-// Turbo and Rapid have no CFG, so the negative prompt and layer skip go unused, and EasyCache has nothing to skip.
+// Turbo and Fast have no CFG, so the negative prompt and layer skip go unused, and EasyCache has nothing to skip.
 function distilledUnused(name, ...also) {
   const reason = `Not used in ${name} mode`;
   return { ...Object.fromEntries(["negative", "cfg", "slg", ...also].map((id) => [id, reason])), easycache: `${reason}: its few steps all change the image too much to skip` };
@@ -348,7 +349,7 @@ function syncForm() {
   syncVideoForm();
   $("megapixels").value = MEGAPIXELS.indexOf(settings.mp);
   const { width, height } = dimensions(settings.aspect, settings.mp);
-  $("size-out").textContent = `${settings.mp} MP · ${width} × ${height}`;
+  $("size-out").textContent = `${settings.mp} MP · ${width}×${height}`;
   const mode = MODES[settings.mode];
   const buttons = [...$("mode").children];
   for (const b of buttons) b.hidden = !modeAvailable(b.dataset.mode);
@@ -365,8 +366,9 @@ function syncForm() {
   const vsize = videoDimensions(v);
   $("settings-summary").textContent = (video
     ? [
-        { turbo: "Turbo", fast: "Fast" }[videoMode(v)] ?? `Quality ${v.steps} steps`,
+        { fast: "Fast", turbo: "Turbo", quality: "Quality" }[videoMode(v)],
         `${vsize.width}×${vsize.height}`,
+        `${videoSteps(v, videoMode(v))} steps`,
         `${v.extend ? "+" : ""}${v.seconds} s`,
         settings.randomSeed ? "random seed" : `seed ${settings.seed}`,
       ]
@@ -412,16 +414,14 @@ function syncVideoForm() {
   const mode = videoMode(v);
   const loras = videoLoras(v);
   $("video-mode").querySelector("[data-mode=turbo]").disabled = !loras.turbo[0];
-  $("video-mode").querySelector("[data-mode=turbo] small").textContent = `${loras.turbo[1]} steps`;
   $("video-mode").querySelector("[data-mode=fast]").disabled = !loras.fast?.[0];
   check($("video-mode"), "mode", mode);
-  $("video-mode").querySelector("[data-mode=quality] small").textContent = `${v.steps} steps`;
   setUnused($("vsteps-field"), mode !== "quality", `${mode === "fast" ? "Fast" : "Turbo"} always uses ${videoSteps(v, mode)} steps`);
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);
   const { width, height } = videoDimensions(v);
-  $("vsize-out").textContent = v.extend ? `${width} × ${height}` : `${v.mp} MP · ${width} × ${height}`;
+  $("vsize-out").textContent = v.extend ? `${width}×${height}` : `${v.mp} MP · ${width}×${height}`;
   setUnused($("vsize-field"), Boolean(v.extend), "The video keeps the size of the one it continues");
   $("length").value = v.seconds;
   $("length-out").textContent = `${v.extend ? "+" : ""}${v.seconds} s`;
@@ -723,7 +723,7 @@ function buildMossWorkflow(s, model, width, height) {
   };
 }
 
-// Rapid mode, as in rapid-moss's native example: its node patches the model and hands
+// Fast mode, as in rapid-moss's native example: its node patches the model and hands
 // SamplerCustomAdvanced the adapter's own sampler and sigmas. No CFG, so BasicGuider and no negative prompt.
 function buildRapidWorkflow(s, model, width, height) {
   return {
@@ -767,7 +767,7 @@ function enhanceNodes(s, inputs) {
 }
 
 // ComfyUI's EasyCache with its default settings, which skip about half of Quality's 50 steps and 3 of
-// Krea 2's 8. Turbo and Rapid skip none, so they never get it.
+// Krea 2's 8. Turbo and Fast skip none, so they never get it.
 function easyCacheNode(model) {
   return { "40": { class_type: "EasyCache", inputs: { model, reuse_threshold: 0.2, start_percent: 0.15, end_percent: 0.95, verbose: false } } };
 }
@@ -1310,7 +1310,7 @@ async function showInfo() {
 function inputsOf(graph, type) { return Object.values(graph).find((n) => n.class_type === type)?.inputs; }
 function linked(graph, link) { return Array.isArray(link) ? graph[link[0]] : null; }
 
-// Rapid images sample with SamplerCustomAdvanced; this reads them back under KSampler's input names
+// Fast images sample with SamplerCustomAdvanced; this reads them back under KSampler's input names
 // (no CFG, sampler or scheduler: the adapter sets those).
 function samplerInputs(graph) {
   const rapid = inputsOf(graph, "RapidMOSSAdapter");
@@ -1338,7 +1338,7 @@ function infoRows(info) {
   const graph = info?.prompt;
   if (!graph) return [["Settings", "This file has no saved settings."]];
   const find = (type) => inputsOf(graph, type);
-  const size = `${info.width} × ${info.height}`;
+  const size = `${info.width}×${info.height}`;
   const h3 = h3Node(graph);
   if (h3) {
     const lora = find("LoraLoaderModelOnly")?.lora_name;
@@ -1416,7 +1416,7 @@ async function reuseCurrent() {
   settings.prompt = prompt ?? settings.prompt;
   settings.negative = linked(graph, s.negative)?.inputs.text ?? "";
   settings.steps = s.steps;
-  // Rapid images have no CFG, sampler or scheduler; the current ones stay.
+  // Fast images have no CFG, sampler or scheduler; the current ones stay.
   settings.cfg = s.cfg ?? settings.cfg;
   settings.sampler = s.sampler_name ?? settings.sampler;
   settings.scheduler = s.scheduler ?? settings.scheduler;

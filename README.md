@@ -45,7 +45,7 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 
 | Pack | What it makes | Download size |
 |---|---|---|
-| MOSS-Image | Images in Quality, Turbo and Rapid modes | 15.4 GB |
+| MOSS-Image | Images in Quality, Turbo and Fast modes | 15.4 GB |
 | Kroma | Images in 8 steps | 5.1 GB, plus the model itself |
 | MiniMax H3 | Videos with sound | 41.7 GB |
 | MiniMax H3 references | Videos that follow reference pictures, videos and voices | 22.9 GB |
@@ -53,10 +53,10 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 - **Kroma** is hosted on Civitai, which only lets signed-in accounts download. Setup links to it.
   Download `kromaKrea2_opd.safetensors` yourself and put it in `models/diffusion_models`. Setup
   downloads its text encoder and VAE.
-- **Rapid mode** for MOSS also needs the
+- **Fast mode** for MOSS also needs the
   [rapid-moss custom node](https://huggingface.co/darask0/MOSS-Image_4-step_adapter_lora/tree/main/comfyui/rapid-moss),
   which runs darask0's 4-step adapter. Copy its `rapid-moss` folder into `ComfyUI/custom_nodes` and
-  restart ComfyUI. Setup downloads the adapter files. Until the node is installed, the Rapid button
+  restart ComfyUI. Setup downloads the adapter files. Until the node is installed, the Fast button
   doesn't appear.
 
 ### What's in each pack
@@ -72,7 +72,7 @@ Apoclada differs and why. Speed figures were measured on an RX 9070.
 | Text encoder (Qwen3.5 9B) | `qwen3.5_9b_w4a8_gptq` | Comfy-Org/MOSS-Image |
 | VAE | `flux2-vae_small` | Comfy-Org/MOSS-Image |
 | Turbo LoRA (8 steps) | `moss-image-sft-8step-dmd` | lodestones/MOSS-Image-SFT-8-steps-dmd |
-| Rapid adapter (4 steps) | `rapid-moss-4step` (3 files) | darask0/MOSS-Image_4-step_adapter_lora |
+| Fast adapter (4 steps) | `rapid-moss-4step` (3 files) | darask0/MOSS-Image_4-step_adapter_lora |
 
 - **VAE:** Apoclada started with Comfy-Org's full `flux2-vae`. The MOSS team said their own release
   decodes with FLUX.2's small decoder because it avoids odd spots and artifacts. It also decodes
@@ -82,7 +82,7 @@ Apoclada differs and why. Speed figures were measured on an RX 9070.
 - **Text encoder:** 4-bit, like the template. Apoclada first used Comfy-Org's int8 version (9.7 GB
   instead of 7.3 GB). Side by side, the images were just as good and peak VRAM was about 1 GB lower.
   Enhance prompt ran about twice as fast, because the smaller encoder fits beside the image model.
-- **Turbo and Rapid** are community distillations that ComfyUI's templates don't include.
+- **Turbo and Fast** are community distillations that ComfyUI's templates don't include.
 
 **Kroma**
 
@@ -134,7 +134,7 @@ MOSS-Image has three modes:
 |---|---|---|
 | Quality | 50 | Full model with CFG |
 | Turbo | 8 | DMD distillation LoRA, no CFG |
-| Rapid | 4 | rapid-moss adapter, no CFG |
+| Fast | 4 | rapid-moss adapter, no CFG |
 
 **Advanced** adds:
 

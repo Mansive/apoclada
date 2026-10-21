@@ -106,7 +106,7 @@ H3_REF = {
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
 PACKS = [
-    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality, Turbo and Rapid modes. Rapid also needs the rapid-moss custom node.",
+    {"id": "moss", "name": "MOSS-Image", "about": "Images, with Quality, Turbo and Fast modes. Fast also needs the rapid-moss custom node.",
      "files": [*MOSS.values(), TURBO_LORA, *RAPID_FILES]},
     {"id": "krea2", "name": "Kroma", "about": "Images from lodestones' Krea 2 fine-tune, in 8 steps.", "files": list(KREA2.values()),
      "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
@@ -423,7 +423,7 @@ async def studio_models(request):
     return web.json_response(models)
 
 
-# Rapid mode needs the rapid-moss custom node as well as its adapter files.
+# Fast mode needs the rapid-moss custom node as well as its adapter files.
 @routes.get("/studio/turbo")
 async def studio_turbo(request):
     rapid = "RapidMOSSAdapter" in NODE_CLASSES and all(have(f) for f in RAPID_FILES)
