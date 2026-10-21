@@ -1351,13 +1351,14 @@ async function slide(strip, goal, v = 0) {
   let c2 = v * 1000 + k * c1;
   if (c1 * c2 < 0) c2 = 0;
   addPeeks(strip, Math.min(goal, 0), Math.max(goal, 0));
-  const s = sliding = { strip, goal, moving: true };
+  const s = sliding = { strip, goal, v, moving: true };
   const start = performance.now();
-  // A touch can catch the slide and carry on from there as a drag, which stops it.
+  // A touch or another turn can catch the slide and carry on from there, which stops it.
   const settled = await new Promise((done) => requestAnimationFrame(function frame(now) {
     if (sliding !== s) return done(false);
     const t = Math.max(0, now - start) / 1000, y = (c1 + c2 * t) * Math.exp(-k * t);
     if (t > 0.1 && Math.abs(y) < 0.5) return done(true);
+    s.v = (c2 - k * (c1 + c2 * t)) * Math.exp(-k * t) / 1000;
     layOut(strip, to + y);
     requestAnimationFrame(frame);
   }));
@@ -1375,11 +1376,14 @@ async function slide(strip, goal, v = 0) {
   sliding = null;
 }
 
-// Prev, Next and the arrow keys turn the page with the same slide a swipe ends in.
+// Prev, Next and the arrow keys turn the page with the same slide a swipe ends in. During a slide they
+// go a page on from where it was headed, at the speed it was going.
 function turn(delta) {
-  if (sliding || !viewer.list[viewer.index + delta]) return;
+  if (sliding && !sliding.moving) return;
+  const { strip, goal, v } = sliding ?? { strip: { dx: 0, peeks: new Map() }, goal: 0, v: 0 };
+  if (!viewer.list[viewer.index + goal + delta]) return;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) step(delta);
-  else slide({ dx: 0, peeks: new Map() }, delta);
+  else slide(strip, goal + delta, v);
 }
 
 async function deleteCurrent() {
