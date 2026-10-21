@@ -254,7 +254,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
 .viewer-bar a { display: inline-flex; align-items: center; text-decoration: none; }
 .viewer-hint { margin: 6px 0 0; text-align: center; font-size: 13px; color: oklch(1 0 0 / 0.6); }
 .viewer-bar { grid-row: 4; align-self: end; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 12px 16px 16px; }
-.viewer-bar [aria-label] { font-size: 22px; width: 48px; }
+.viewer-bar [aria-label] { width: 48px; padding: 0; display: inline-grid; place-items: center; }
 .icon { width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; }
 /* Info is a sheet over the lower part of the viewer on phones, and a column beside the picture
    on wider screens, where the picture and buttons move over to stay in view. */
