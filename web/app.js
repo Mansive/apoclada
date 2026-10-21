@@ -949,7 +949,8 @@ async function generate() {
     const { width, height } = video ? videoDimensions(settings.video) : dimensions(settings.aspect, settings.mp);
     previewSlot(width, height).style.aspectRatio = `${width} / ${height}`;
   }
-  if (window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
+  // A job queued behind another of this page's leaves the page where it is.
+  if (pending.length === 1 && window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function cancelAll() {
