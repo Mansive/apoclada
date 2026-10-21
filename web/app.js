@@ -290,11 +290,13 @@ function renderChoices() {
   $("slg").replaceChildren(...SLG_LAYERS.map(([layer, label]) => choice("layer", layer, () => { settings.slgLayer = layer; syncForm(); }, label)));
   sizeSlider($("video-mp"), VIDEO_MP, (mp) => { settings.video.mp = mp; });
   for (const b of $("mode").children) {
-    b.textContent = MODES[b.dataset.mode].label;
+    const mode = MODES[b.dataset.mode];
+    b.replaceChildren(mode.label, el("small", { textContent: `${mode.tuning.steps} steps` }));
     b.onclick = () => setMode(b.dataset.mode);
   }
+  // Video step counts are filled in by syncVideoForm, since Turbo's depends on the model.
   for (const b of $("video-mode").children) {
-    b.textContent = VIDEO_MODES[b.dataset.mode];
+    b.replaceChildren(VIDEO_MODES[b.dataset.mode], el("small"));
     b.onclick = () => { settings.video.mode = b.dataset.mode; syncForm(); };
   }
   for (const b of $("kind").children) b.onclick = () => { settings.kind = b.dataset.kind; syncForm(); };
@@ -425,6 +427,10 @@ function syncVideoForm() {
   const loras = videoLoras(v);
   $("video-mode").querySelector("[data-mode=turbo]").disabled = !loras.turbo[0];
   $("video-mode").querySelector("[data-mode=fast]").disabled = !loras.fast?.[0];
+  for (const b of $("video-mode").children) {
+    const steps = b.dataset.mode === "quality" ? DEFAULTS.video.steps : loras[b.dataset.mode]?.[1];
+    b.querySelector("small").textContent = steps ? `${steps} steps` : "";
+  }
   check($("video-mode"), "mode", mode);
   setUnused($("vsteps-field"), mode !== "quality", `${VIDEO_MODES[mode]} always uses ${videoSteps(v, mode)} steps`);
   $("vsteps").value = v.steps;
