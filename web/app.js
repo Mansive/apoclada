@@ -1307,32 +1307,50 @@ function peekAt(delta) {
 
 function shown() { return $("v-video").hidden ? $("v-img") : $("v-video"); }
 
+function pageWidth() { return $("v-img").parentNode.clientWidth; }
+
+// A strip of pictures a page width apart: the current one `dx` from its place, and copies of the
+// neighbours (by offset; null past the ends), added as they're needed.
+function addPeeks(strip, from, to) {
+  for (let k = from; k <= to; k++) if (k && !strip.peeks.has(k)) strip.peeks.set(k, peekAt(k));
+}
+
+function layOut(strip, dx) {
+  const w = pageWidth();
+  strip.dx = dx;
+  addPeeks(strip, Math.floor(-dx / w), Math.ceil(-dx / w));
+  shown().style.transform = `translateX(${dx}px)`;
+  for (const [k, peek] of strip.peeks) if (peek) peek.style.transform = `translateX(${dx + k * w}px)`;
+}
+
+// The page the strip can go to nearest `goal`.
+function within(goal) { return Math.min(Math.max(goal, -viewer.index), viewer.list.length - 1 - viewer.index); }
+
 // The slide playing, if any. Its animations are dropped once it has played.
 let sliding = null;
 
-// Slides the picture from `dx` off the screen, bringing in the neighbour (if any) a page width behind
-// it, or back to its place.
-async function slide(delta, peek, dx, turnPage) {
+// Slides the strip until the picture `goal` pages along is in place, then shows it for real.
+async function slide(strip, goal) {
   const cur = shown();
-  const page = cur.parentNode.clientWidth * delta;
-  const to = turnPage ? -page : 0;
-  const move = (el, from, to) => {
-    el.style.transform = `translateX(${to}px)`;
-    return el.animate({ transform: [`translateX(${from}px)`, `translateX(${to}px)`] }, { duration: 450, easing: "cubic-bezier(.2, .7, .3, 1)" });
-  };
-  const anims = peek ? [move(cur, dx, to), move(peek, dx + page, to + page)] : [move(cur, dx, 0)];
-  sliding = { cur, peek, delta, anims };
+  const w = pageWidth();
+  const timing = { duration: 450, easing: "cubic-bezier(.2, .7, .3, 1)" };
+  addPeeks(strip, Math.min(goal, 0), Math.max(goal, 0));
+  const anims = [[0, cur], ...strip.peeks].filter(([, e]) => e).map(([k, e]) => {
+    e.style.transform = `translateX(${(k - goal) * w}px)`;
+    return e.animate({ transform: [`translateX(${strip.dx + k * w}px)`, `translateX(${(k - goal) * w}px)`] }, timing);
+  });
+  sliding = { cur, strip, goal, anims };
   // A touch can catch the slide and carry on from there as a drag, which cancels it.
   try { await Promise.all(anims.map((a) => a.finished)); } catch { return; }
   sliding.anims = null;
-  if (turnPage) {
-    step(delta);
-    // The neighbour's copy covers the real picture until it has loaded, so nothing blinks.
+  if (goal) {
+    step(goal);
+    // The copy covers the real picture until it has loaded, so nothing blinks.
     const img = shown();
     if (img === $("v-img")) await new Promise((done) => { img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); });
   }
   cur.style.transform = "";
-  peek?.remove();
+  for (const peek of strip.peeks.values()) peek?.remove();
   sliding = null;
 }
 
@@ -1340,7 +1358,7 @@ async function slide(delta, peek, dx, turnPage) {
 function turn(delta) {
   if (sliding || !viewer.list[viewer.index + delta]) return;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) step(delta);
-  else slide(delta, peekAt(delta), 0, true);
+  else slide({ dx: 0, peeks: new Map() }, delta);
 }
 
 async function deleteCurrent() {
@@ -1680,38 +1698,40 @@ function bindViewer() {
     clearTimeout(idle);
     if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
   });
-  // A swipe drags the picture with its neighbour beside it. Letting go after 60 px, or after a
-  // quick flick, slides on the way it moved; otherwise it slides back. A touch during a slide catches
-  // it where it is: holding pauses it, swiping drags on from there, and letting go without a swipe
-  // settles on the nearer picture. Past the first or last picture it drags at a third of the finger's
-  // pace. Swipes on the video would fight with scrubbing its timeline, and swipes in Info with
-  // selecting its text, so neither moves anything.
+  // A swipe drags the strip of pictures. Letting go after 60 px, or after a quick flick, slides a
+  // page on the way it moved; otherwise it settles on the nearest picture. A touch during a slide
+  // catches it where it is: holding pauses it, and a swipe goes a page further on from where the
+  // slide was headed, so two quick swipes turn two pages. Past the first or last picture the strip
+  // moves at a third of the finger's pace. Swipes on the video would fight with scrubbing its
+  // timeline, and swipes in Info with selecting its text, so neither moves anything.
   const box = area.querySelector(".viewer-img");
   let drag = null;
-  const nearer = () => Math.abs(drag.dx) > box.clientWidth / 2;
-  const letGo = (turnPage) => {
-    const { dx, delta, peek } = drag;
+  const ends = () => [-(viewer.list.length - 1 - viewer.index) * box.clientWidth, viewer.index * box.clientWidth];
+  const nearest = () => within(Math.round(-drag.strip.dx / box.clientWidth));
+  const letGo = (goal) => {
+    const { strip } = drag;
     drag = null;
-    if (peek || dx) slide(delta, peek, dx, turnPage && Boolean(peek));
+    if (strip.dx || goal) slide(strip, goal);
+    else for (const peek of strip.peeks.values()) peek?.remove();
   };
   area.addEventListener("touchstart", (e) => {
-    if (drag) letGo(nearer());
+    if (drag) letGo(nearest());
     caught = false;
     if (e.touches.length !== 1 || e.target.closest("video, .viewer-info")) return;
-    let dx = 0, delta = 0, peek = null;
+    let strip = { dx: 0, peeks: new Map() }, goal = 0;
     if (sliding) {
       // After a turn, the new picture takes a moment to load, and can't be caught.
       if (!sliding.anims) return;
-      ({ delta, peek } = sliding);
-      dx = new DOMMatrix(getComputedStyle(sliding.cur).transform).m41;
+      ({ strip, goal } = sliding);
+      const dx = new DOMMatrix(getComputedStyle(sliding.cur).transform).m41;
       for (const a of sliding.anims) a.cancel();
       sliding = null;
-      shown().style.transform = `translateX(${dx}px)`;
-      if (peek) peek.style.transform = `translateX(${dx + delta * box.clientWidth}px)`;
+      layOut(strip, dx);
       caught = true;
     }
-    const raw = peek || !dx ? dx : dx * 3;
-    drag = { x: e.touches[0].clientX - raw, from: raw, raw, time: e.timeStamp, dx, delta, peek };
+    const [lo, hi] = ends(), dx = strip.dx;
+    const raw = dx < lo ? lo + (dx - lo) * 3 : dx > hi ? hi + (dx - hi) * 3 : dx;
+    drag = { strip, goal, x: e.touches[0].clientX - raw, from: raw, raw, time: e.timeStamp };
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
     if (!drag) return;
@@ -1720,24 +1740,18 @@ function bindViewer() {
     if (!drag.moved && Math.abs(raw - drag.from) < 10) return;
     drag.moved = true;
     drag.raw = raw;
-    const delta = raw < 0 ? 1 : -1;
-    if (delta !== drag.delta) {
-      drag.peek?.remove();
-      drag.delta = delta;
-      drag.peek = peekAt(delta);
-    }
-    // The neighbour stops in the middle; the one past it isn't laid out.
-    drag.dx = drag.peek ? Math.max(-box.clientWidth, Math.min(box.clientWidth, raw)) : raw / 3;
-    shown().style.transform = `translateX(${drag.dx}px)`;
-    if (drag.peek) drag.peek.style.transform = `translateX(${drag.dx + delta * box.clientWidth}px)`;
+    const [lo, hi] = ends();
+    layOut(drag.strip, raw < lo ? lo + (raw - lo) / 3 : raw > hi ? hi + (raw - hi) / 3 : raw);
   }, { passive: true });
   area.addEventListener("touchend", (e) => {
     if (!drag) return;
     const moved = drag.raw - drag.from;
-    const swipe = Math.abs(moved) > 60 || (Math.abs(moved) > 20 && e.timeStamp - drag.time < 300);
-    letGo(swipe ? Math.sign(moved) === -drag.delta : nearer());
+    const page = -drag.strip.dx / box.clientWidth;
+    if (Math.abs(moved) > 60 || (Math.abs(moved) > 20 && e.timeStamp - drag.time < 300)) {
+      letGo(within(moved < 0 ? Math.max(drag.goal + 1, Math.ceil(page)) : Math.min(drag.goal - 1, Math.floor(page))));
+    } else letGo(nearest());
   });
-  area.addEventListener("touchcancel", () => { if (drag) letGo(nearer()); });
+  area.addEventListener("touchcancel", () => { if (drag) letGo(nearest()); });
   document.addEventListener("keydown", (e) => {
     if ($("viewer").hidden) return;
     if (e.key === "Escape") closeViewer();
