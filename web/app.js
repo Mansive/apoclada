@@ -1216,11 +1216,19 @@ function thumbButton(img, onclick) {
   return btn;
 }
 
+// Tiles whose thumbnail hasn't changed are kept: fresh ones flash blank while they decode, even from cache.
 async function loadGallery() {
   gallery = await getJson(galleryUrl, []);
   showGalleryCount();
+  const tiles = new Map([...$("grid").querySelectorAll("img")].map((i) => [i.getAttribute("src"), i.parentElement]));
   $("grid").replaceChildren(...(gallery.length
-    ? gallery.map((img) => thumbButton(img, () => openViewer(gallery, gallery.indexOf(img))))
+    ? gallery.map((img) => {
+      const open = () => openViewer(gallery, gallery.indexOf(img));
+      const tile = tiles.get(thumbUrl(img));
+      if (!tile) return thumbButton(img, open);
+      tile.onclick = open;
+      return tile;
+    })
     : [el("p", { className: "empty", textContent: "Nothing here yet." })]));
 }
 
