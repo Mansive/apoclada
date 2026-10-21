@@ -1353,9 +1353,11 @@ function setZoom(z, ease) {
 
 // Springs the strip until the picture `goal` pages along is in place, then shows it for real. The
 // spring is critically damped and starts at the finger's speed (`v`, px/ms), capped so it doesn't
-// overshoot; stiffness 13 matches Photos' paging, measured from screen recordings. It's drawn frame by
-// frame rather than as an animation, which Safari plays apart from the page: a touch catching one
-// found it a few frames back from where it showed, and the picture jumped back.
+// overshoot; stiffness 13 matches Photos' paging, measured from screen recordings. Its time runs
+// faster as it goes (t + 3t³), so it starts out the same but doesn't crawl the last few pixels into
+// place, ending in about 0.45 s rather than 0.75. It's drawn frame by frame rather than as an
+// animation, which Safari plays apart from the page: a touch catching one found it a few frames back
+// from where it showed, and the picture jumped back.
 async function slide(strip, goal, v = 0) {
   const cur = shown();
   const k = 13, to = -goal * pageWidth(), c1 = strip.dx - to;
@@ -1367,9 +1369,9 @@ async function slide(strip, goal, v = 0) {
   // A touch or another turn can catch the slide and carry on from there, which stops it.
   const settled = await new Promise((done) => requestAnimationFrame(function frame(now) {
     if (sliding !== s) return done(false);
-    const t = Math.max(0, now - start) / 1000, y = (c1 + c2 * t) * Math.exp(-k * t);
+    const t = Math.max(0, now - start) / 1000, w = t + 3 * t ** 3, y = (c1 + c2 * w) * Math.exp(-k * w);
     if (t > 0.1 && Math.abs(y) < 0.5) return done(true);
-    s.v = (c2 - k * (c1 + c2 * t)) * Math.exp(-k * t) / 1000;
+    s.v = (c2 - k * (c1 + c2 * w)) * Math.exp(-k * w) * (1 + 9 * t * t) / 1000;
     layOut(strip, to + y);
     requestAnimationFrame(frame);
   }));
