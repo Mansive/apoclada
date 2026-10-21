@@ -176,7 +176,7 @@ The gallery shows every image and video in ComfyUI's output folder, newest first
 - **Info** shows the prompt, the enhanced prompt, the model, the settings, how long the file took
   to generate and the file encoding. When a job finishes, Create also shows how long it took.
 - **Reuse settings** loads that file's prompt and settings into Create.
-- **Animate** starts a video from the image; **Extend** continues a video, sound included.
+- **Animate** starts over from the image; **Extend** continues a video, sound included.
 - **Save** (videos) downloads the file. On iPhone or iPad, open the video in Files and use
   Share › Save Video to add it to Photos. Images save the browser's usual way, with a long press or
   right-click.

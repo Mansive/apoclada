@@ -1515,9 +1515,16 @@ async function pickMedia() {
   $("picker").scrollTop = 0;
 }
 
-// Sends the viewer's image to Video mode as the start frame.
+// Starts a new video from the viewer's image, replacing the images, references and extended video
+// chosen before.
 async function animateCurrent() {
-  if (await addFromGallery(viewer.list[viewer.index], "start")) toCreate("video", "Image set as the video's start frame. Describe the motion and press Generate.");
+  const item = await addFromGallery(viewer.list[viewer.index], "start");
+  if (!item) return;
+  editVideo((v) => {
+    v.items = [item];
+    v.extend = null;
+  });
+  toCreate("video", "Image set as the video's start frame. Describe the motion and press Generate.");
 }
 
 // Sends the viewer's video to Video mode to be continued. The new part replaces the old video's last
