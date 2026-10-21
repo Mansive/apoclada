@@ -1341,13 +1341,14 @@ function within(goal) { return Math.min(Math.max(goal, -viewer.index), viewer.li
 // The slide playing, if any. It stops `moving` once in place, while the picture it turned to loads.
 let sliding = null;
 
-// How far the picture is zoomed in (`s`) and moved from its place (`x`, `y`, px), or null.
+// How far the picture is zoomed in (`s`) and moved from its place (`x`, `y`, px), or null. Like a
+// slide, it moves on a layer of its own (see layOut).
 let zoom = null;
 
 function setZoom(z, ease) {
   const img = $("v-img"), from = img.style.transform || "none";
   zoom = z;
-  img.style.transform = z ? `translate(${z.x}px, ${z.y}px) scale(${z.s})` : "";
+  img.style.transform = z ? `translate3d(${z.x}px, ${z.y}px, 0) scale(${z.s})` : "";
   if (ease) img.animate({ transform: [from, img.style.transform || "none"] }, { duration: 300, easing: "ease-out" });
 }
 
