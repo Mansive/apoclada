@@ -77,16 +77,16 @@ const MODES = {
   },
   turbo: {
     tuning: { steps: 8, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [4, 16], note: "8 is recommended.", ...MOSS_NOTES,
-    label: "Turbo", unused: distilledUnused("Turbo"), build: buildMossWorkflow,
-    file: () => turboLora, node: "LoraLoaderModelOnly", missing: "This image used Turbo mode, but its LoRA is missing on the PC",
+    label: "Turbo", distilled: [], build: buildMossWorkflow,
+    file: () => turboLora, node: "LoraLoaderModelOnly", missing: "its LoRA is missing on the PC",
   },
   // Fast is darask0's rapid-moss adapter, which brings its own sampler and sigmas, so only the step
   // count applies. Its id stays "rapid" so saved settings carry over.
   rapid: {
     tuning: { steps: 4, cfg: 1, shift: 5, slgLayer: "", ...MOSS_SAMPLER }, steps: [1, 4], note: "4 is recommended.",
     ...MOSS_NOTES, sizeNote: "Trained at about 1 MP. Other sizes are untested.",
-    label: "Fast", unused: distilledUnused("Fast", "shift", "sampler", "scheduler"), build: buildRapidWorkflow,
-    file: () => rapidAdapter, node: "RapidMOSSAdapter", missing: "This image used Fast mode, which needs the rapid-moss node and adapter on the PC",
+    label: "Fast", distilled: ["shift", "sampler", "scheduler"], build: buildRapidWorkflow,
+    file: () => rapidAdapter, node: "RapidMOSSAdapter", missing: "it needs the rapid-moss node and adapter on the PC",
   },
   // Krea 2's shift of 1.15 sits between MOSS's half steps.
   krea2: {
@@ -94,13 +94,15 @@ const MODES = {
     sizeNote: "1 MP is the official default.",
     cfgNote: "1 to 1.5 is recommended. Above 1, the negative prompt is used and each step takes about twice as long.",
     family: "krea2", prompt: KREA2_PROMPT, shiftStep: 0.05, build: buildKrea2Workflow,
-    unused: { mode: "Krea 2 models have no Turbo or Fast mode", slg: "Not used with Krea 2 models" },
+    unused: { mode: "Krea 2 models have only one mode", slg: "Not used with Krea 2 models" },
   },
 };
-// Turbo and Fast have no CFG, so the negative prompt and layer skip go unused, and EasyCache has nothing to skip.
-function distilledUnused(name, ...also) {
-  const reason = `Not used in ${name} mode`;
-  return { ...Object.fromEntries(["negative", "cfg", "slg", ...also].map((id) => [id, reason])), easycache: `${reason}: its few steps all change the image too much to skip` };
+// The distilled modes have no CFG, so the negative prompt and layer skip go unused, and EasyCache has
+// nothing to skip; `distilled` lists what else each ignores. The reasons name the mode by its label.
+for (const mode of Object.values(MODES)) {
+  if (!mode.distilled) continue;
+  const reason = `Not used in ${mode.label} mode`;
+  mode.unused = { ...Object.fromEntries(["negative", "cfg", "slg", ...mode.distilled].map((id) => [id, reason])), easycache: `${reason}: its few steps all change the image too much to skip` };
 }
 const DEFAULTS = {
   prompt: "masterpiece, best quality, score_7, highres, year 2025, hatsune miku, vocaloid, 1girl, solo, smile, cream sweater\nShe sits at a small table by the rain-streaked window of a corner café on a rainy evening, holding a steaming mug in both hands, her long twintails falling over her shoulders. Seen from the side at eye level, warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. A small chalkboard on the table reads \"Open late\" in white chalk. Soft anime illustration with clean lines; the mood is calm and cozy.",
@@ -160,6 +162,8 @@ User's Input:
 // MiniMax H3 is trained on a 768 short edge capped at 768×1344; the official template defaults to ~0.4 MP.
 // 0.98 MP is H3's native canvas (1344×768 at 16:9); Comfy's guide warns 1 MP rounds above it.
 const VIDEO_MP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.98];
+// Video modes by id, with the names shown for them.
+const VIDEO_MODES = { fast: "Fast", turbo: "Turbo", quality: "Quality" };
 const PROMPT_HINTS = {
   image: "Describe the image. Tap \"Default prompts\" for an example tailored to the selected model.",
   video: "Describe the video and its sound. Tap \"Default prompts\" for an example in MiniMax's format.",
@@ -285,8 +289,14 @@ function renderChoices() {
   sizeSlider($("megapixels"), MEGAPIXELS, (mp) => { settings.mp = mp; });
   $("slg").replaceChildren(...SLG_LAYERS.map(([layer, label]) => choice("layer", layer, () => { settings.slgLayer = layer; syncForm(); }, label)));
   sizeSlider($("video-mp"), VIDEO_MP, (mp) => { settings.video.mp = mp; });
-  for (const b of $("mode").children) b.onclick = () => setMode(b.dataset.mode);
-  for (const b of $("video-mode").children) b.onclick = () => { settings.video.mode = b.dataset.mode; syncForm(); };
+  for (const b of $("mode").children) {
+    b.textContent = MODES[b.dataset.mode].label;
+    b.onclick = () => setMode(b.dataset.mode);
+  }
+  for (const b of $("video-mode").children) {
+    b.textContent = VIDEO_MODES[b.dataset.mode];
+    b.onclick = () => { settings.video.mode = b.dataset.mode; syncForm(); };
+  }
   for (const b of $("kind").children) b.onclick = () => { settings.kind = b.dataset.kind; syncForm(); };
 }
 
@@ -366,7 +376,7 @@ function syncForm() {
   const vsize = videoDimensions(v);
   $("settings-summary").textContent = (video
     ? [
-        { fast: "Fast", turbo: "Turbo", quality: "Quality" }[videoMode(v)],
+        VIDEO_MODES[videoMode(v)],
         `${vsize.width}×${vsize.height}`,
         `${videoSteps(v, videoMode(v))} steps`,
         `${v.extend ? "+" : ""}${v.seconds} s`,
@@ -416,7 +426,7 @@ function syncVideoForm() {
   $("video-mode").querySelector("[data-mode=turbo]").disabled = !loras.turbo[0];
   $("video-mode").querySelector("[data-mode=fast]").disabled = !loras.fast?.[0];
   check($("video-mode"), "mode", mode);
-  setUnused($("vsteps-field"), mode !== "quality", `${mode === "fast" ? "Fast" : "Turbo"} always uses ${videoSteps(v, mode)} steps`);
+  setUnused($("vsteps-field"), mode !== "quality", `${VIDEO_MODES[mode]} always uses ${videoSteps(v, mode)} steps`);
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);
@@ -1429,7 +1439,7 @@ async function reuseCurrent() {
     settings.batch = latent.batch_size || 1;
   }
   const mode = savedMode(graph);
-  if (!modeAvailable(mode)) { toast(MODES[mode].missing); return; }
+  if (!modeAvailable(mode)) { toast(`This image used ${MODES[mode].label} mode, but ${MODES[mode].missing}`); return; }
   settings.mode = mode;
   settings.easyCache = Boolean(inputsOf(graph, "EasyCache"));
   settings.shift = (inputsOf(graph, "ModelSamplingAuraFlow") ?? inputsOf(graph, "ModelSamplingSD3"))?.shift ?? settings.shift;
