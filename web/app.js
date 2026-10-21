@@ -1316,7 +1316,8 @@ function peekAt(delta) {
 
 function shown() { return $("v-video").hidden ? $("v-img") : $("v-video"); }
 
-function pageWidth() { return $("v-img").parentNode.clientWidth; }
+// Pictures slide with a gap between them, as in Photos.
+function pageWidth() { return $("v-img").parentNode.clientWidth + 16; }
 
 // A strip of pictures a page width apart: the current one `dx` from its place, and copies of the
 // neighbours (by offset; null past the ends), added as they're needed.
@@ -1714,17 +1715,14 @@ function bindViewer() {
     if (e.target === $("v-img")) setBare(!area.classList.contains("bare"));
     else if (!e.target.closest("img, video, button, a, .viewer-info")) closeViewer();
   });
-  // Grid rows only animate between lengths, and Safari won't start from a length set in the same
-  // moment as the change, so the rows always hold the bars' heights in pixels. The bars sit at
-  // the rows' outer edges, so their heights stay their own even while the rows are closed. The zero
-  // heights of a closed viewer are skipped, or the rows would grow in from nothing on opening.
-  const rows = new ResizeObserver(() => {
+  // The bars' heights, which keep videos clear of them. A closed viewer's zero heights are skipped.
+  const bars = new ResizeObserver(() => {
     if (area.hidden) return;
     area.style.setProperty("--top", `${area.querySelector(".viewer-top").offsetHeight}px`);
     area.style.setProperty("--bar", `${area.querySelector(".viewer-bar").offsetHeight}px`);
   });
-  rows.observe(area.querySelector(".viewer-top"));
-  rows.observe(area.querySelector(".viewer-bar"));
+  bars.observe(area.querySelector(".viewer-top"));
+  bars.observe(area.querySelector(".viewer-bar"));
   // The image is sized from its shape in CSS, so small ones scale up to fill the space too.
   $("v-img").onload = (e) => e.target.style.setProperty("--ar", e.target.naturalWidth / e.target.naturalHeight);
   // A mouse brings the buttons back when it moves and hides them after 3 s still, unless it rests on one.
@@ -1745,8 +1743,7 @@ function bindViewer() {
   // Two fingers zoom the picture about the point between them, up to 5×, and zooming in hides the
   // buttons. Zoomed in, one finger moves it about instead of turning the page. Letting go, it moves
   // back to fill the space where it's big enough to, and to the middle where it isn't; zoomed out
-  // past its size, it springs back to it. The picture grows as the buttons' rows close, so a pinch
-  // keeps its size on screen and the point under the fingers as fractions of the picture.
+  // past its size, it springs back to it.
   const box = area.querySelector(".viewer-img");
   let drag = null, pinch = null, pan = null;
   const fingers = (e) => {
@@ -1762,8 +1759,8 @@ function bindViewer() {
     const img = $("v-img"), c = middle();
     setZoom({ s: zoom.s, x: fit(zoom.x, c.x, img.offsetWidth * zoom.s / 2, box.clientWidth), y: fit(zoom.y, c.y, img.offsetHeight * zoom.s / 2, box.clientHeight) }, true);
   };
-  const ends = () => [-(viewer.list.length - 1 - viewer.index) * box.clientWidth, viewer.index * box.clientWidth];
-  const nearest = () => within(Math.round(-drag.strip.dx / box.clientWidth));
+  const ends = () => [-(viewer.list.length - 1 - viewer.index) * pageWidth(), viewer.index * pageWidth()];
+  const nearest = () => within(Math.round(-drag.strip.dx / pageWidth()));
   const letGo = (goal, v) => {
     const { strip } = drag;
     drag = null;
@@ -1779,10 +1776,9 @@ function bindViewer() {
     if (e.target.closest("video, .viewer-info, button, a")) return;
     // A second finger zooms, unless the first has already sent the strip sliding.
     if (e.touches.length === 2 && !sliding && !$("v-img").hidden) {
-      const f = fingers(e), c = middle(), z = zoom ?? { s: 1, x: 0, y: 0 }, img = $("v-img");
-      const w = img.offsetWidth * z.s, h = img.offsetHeight * z.s;
+      const f = fingers(e), c = middle(), z = zoom ?? { s: 1, x: 0, y: 0 };
       pan = null;
-      pinch = { d: f.d, w, x: (f.x - c.x - z.x) / w, y: (f.y - c.y - z.y) / h };
+      pinch = { d: f.d, s: z.s, x: (f.x - c.x - z.x) / z.s, y: (f.y - c.y - z.y) / z.s };
       return;
     }
     if (e.touches.length !== 1) return;
@@ -1805,10 +1801,9 @@ function bindViewer() {
   }, { passive: true });
   area.addEventListener("touchmove", (e) => {
     if (pinch && e.touches.length === 2) {
-      const f = fingers(e), c = middle(), img = $("v-img"), w = img.offsetWidth, h = img.offsetHeight;
-      const s = Math.min(Math.max(pinch.w * f.d / pinch.d / w, 0.5), 5);
+      const f = fingers(e), c = middle(), s = Math.min(Math.max(pinch.s * f.d / pinch.d, 0.5), 5);
       if (s > 1) setBare(true);
-      setZoom({ s, x: f.x - c.x - pinch.x * s * w, y: f.y - c.y - pinch.y * s * h });
+      setZoom({ s, x: f.x - c.x - s * pinch.x, y: f.y - c.y - s * pinch.y });
     }
     if (pan) setZoom({ s: zoom.s, x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
     if (!drag) return;
@@ -1836,7 +1831,7 @@ function bindViewer() {
     const v = drag.moved && e.timeStamp - last.time < 100 && last.time > first.time ? (last.raw - first.raw) / (last.time - first.time) : 0;
     const moved = drag.raw - drag.from;
     const dir = Math.abs(v) > 0.3 ? -Math.sign(v) : Math.abs(moved) > 60 ? -Math.sign(moved) : 0;
-    const page = -drag.strip.dx / box.clientWidth;
+    const page = -drag.strip.dx / pageWidth();
     if (dir > 0) letGo(within(Math.max(Math.ceil(page), (drag.goal ?? -Infinity) + 1)), v);
     else if (dir < 0) letGo(within(Math.min(Math.floor(page), (drag.goal ?? Infinity) - 1)), v);
     else letGo(nearest(), v);
