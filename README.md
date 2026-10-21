@@ -29,14 +29,10 @@ Apoclada adds the page, a gallery, model downloads and one-tap updates.
 
 1. Put this folder in `ComfyUI/custom_nodes/apoclada_studio`. Cloning it with git lets Setup
    update it later.
-2. Install its one extra package, using the Python that runs ComfyUI:
-
-   ```bash
-   python -m pip install -r custom_nodes/apoclada_studio/requirements.txt
-   ```
-
-   This adds JPEG XL support. Without it Apoclada still works and saves PNG.
-3. Start ComfyUI and open <http://localhost:8188/studio>.
+2. Start ComfyUI and open <http://localhost:8188/studio>.
+3. For JPEG XL images, press **Install and restart** under Image files in Setup. It installs
+   `requirements.txt` into ComfyUI's Python with pip, or with uv if that Python has no pip.
+   Without it Apoclada still works and saves PNG.
 
 To use Apoclada from another device on your network, start ComfyUI with `--listen` and open
 `http://<PC's IP address>:8188/studio`. On iPhone or iPad, Share › Add to Home Screen opens it

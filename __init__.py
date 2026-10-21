@@ -5,10 +5,12 @@ the page itself, gallery listing, metadata and delete, model downloads and self-
 """
 import asyncio
 import functools
+import importlib.util
 import json
 import math
 import mimetypes
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -31,7 +33,7 @@ from server import PromptServer
 
 # JPEG XL needs pillow-jxl-plugin (requirements.txt). Importing it teaches Pillow, and with it the
 # gallery, Reuse and ComfyUI's own loaders, to read .jxl. Updates only git pull, so a copy that
-# hasn't installed it yet keeps working with PNG and Setup says what's missing.
+# hasn't installed it yet keeps working with PNG and Setup offers to install it.
 try:
     import pillow_jxl
 except ImportError:
@@ -568,6 +570,24 @@ async def studio_update(request):
     update_check["behind"] = 0
     restart()
     return web.json_response({"updated": out})
+
+
+# Installs requirements.txt into the Python running ComfyUI, then restarts so it loads. Venvs made
+# by uv have no pip, so those go through uv.
+@routes.post("/studio/requirements")
+async def studio_requirements(request):
+    if importlib.util.find_spec("pip"):
+        command = [sys.executable, "-m", "pip", "install"]
+    elif uv := shutil.which("uv"):
+        command = [uv, "pip", "install", "--python", sys.executable]
+    else:
+        return web.json_response({"error": "ComfyUI's Python has no pip, and uv isn't installed"}, status=500)
+    proc = await asyncio.create_subprocess_exec(*command, "-r", os.path.join(PLUGIN_DIR, "requirements.txt"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return web.json_response({"error": out.decode(errors="replace").strip().splitlines()[-1]}, status=500)
+    restart()
+    return web.json_response({"installed": True})
 
 
 def is_video(path):

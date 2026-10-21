@@ -1661,7 +1661,9 @@ async function loadPrefs(change) {
         : "Lossy looks the same as PNG at normal viewing, but isn't pixel-identical: very fine detail shifts slightly." }),
     jxl && el("span", { className: "note", textContent: "Safari and Chrome 155 or newer show JPEG XL; other browsers here see a PNG copy. Many apps outside the browser can't open .jxl files yet." }),
     el("span", { className: "note", textContent: "Applies to new images from every device. Existing images keep their format." }),
-    !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC. Install Apoclada's requirements.txt into ComfyUI's Python, then restart ComfyUI." }),
+    !p.jxl_available && el("span", { className: "warn", textContent: "JPEG XL needs the pillow-jxl-plugin Python package on the PC." }),
+    !p.jxl_available && el("div", { className: "actions-row" },
+      el("button", { type: "button", className: "ghost", textContent: "Install and restart", onclick: installRequirements })),
   ].filter(Boolean));
   // The PC lists the encoders it can run for each codec: an NVIDIA or AMD graphics card's, and the CPU.
   const hevc = p.video_codec === "hevc";
@@ -1701,16 +1703,31 @@ async function loadUpdates(check) {
   ].filter(Boolean));
 }
 
-async function runUpdate() {
-  if (!confirm("Updating restarts ComfyUI on the PC. Anything generating now is lost.")) return;
-  const res = await fetch("/studio/update", { method: "POST" }).catch(() => null);
-  if (!res) { toast("Can't reach the PC"); return; }
-  if (!res.ok) { toast(((await res.json().catch(() => ({}))).error || "The update failed").split("\n")[0]); return; }
-  toast("Updated. Restarting ComfyUI…");
-  // The page reloads once the restarted server answers, picking up the new version.
+function runUpdate() {
+  if (confirm("Updating restarts ComfyUI on the PC. Anything generating now is lost.")) restartWith("/studio/update", "Updated", "The update failed");
+}
+
+async function installRequirements(e) {
+  if (!confirm("Installing restarts ComfyUI on the PC. Anything generating now is lost.")) return;
+  const button = e.currentTarget;
+  button.disabled = true;
+  button.textContent = "Installing…";
+  if (!(await restartWith("/studio/requirements", "Installed", "The install failed"))) {
+    button.disabled = false;
+    button.textContent = "Install and restart";
+  }
+}
+
+// The page reloads once the restarted server answers, picking up what changed.
+async function restartWith(url, done, failed) {
+  const res = await fetch(url, { method: "POST" }).catch(() => null);
+  if (!res) { toast("Can't reach the PC"); return false; }
+  if (!res.ok) { toast(((await res.json().catch(() => ({}))).error || failed).split("\n")[0]); return false; }
+  toast(`${done}. Restarting ComfyUI…`);
   await new Promise((r) => setTimeout(r, 4000));
   while (!(await fetch("/queue").then((r) => r.ok).catch(() => false))) await new Promise((r) => setTimeout(r, 2000));
   location.reload();
+  return true;
 }
 
 /* ---------- misc ---------- */
