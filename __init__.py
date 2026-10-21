@@ -394,11 +394,18 @@ PromptServer.instance.send_json = copy_to_studio_clients(PromptServer.instance.s
 PromptServer.instance.send_bytes = copy_to_studio_clients(PromptServer.instance.send_bytes)
 
 
+def output_path(*parts):
+    output_dir = os.path.abspath(folder_paths.get_output_directory())
+    path = os.path.abspath(os.path.join(output_dir, *parts))
+    if os.path.commonpath((path, output_dir)) != output_dir:
+        raise web.HTTPForbidden()
+    return path
+
+
 # Takes the request's query or posted JSON, either of which names the file by subfolder and filename.
 def output_file(params):
-    output_dir = os.path.abspath(folder_paths.get_output_directory())
-    path = os.path.abspath(os.path.join(output_dir, params.get("subfolder", ""), params.get("filename", "")))
-    if os.path.commonpath((path, output_dir)) != output_dir or os.path.splitext(path)[1].lower() not in MEDIA_EXTS:
+    path = output_path(params.get("subfolder", ""), params.get("filename", ""))
+    if os.path.splitext(path)[1].lower() not in MEDIA_EXTS:
         raise web.HTTPForbidden()
     if not os.path.isfile(path):
         raise web.HTTPNotFound()
@@ -597,12 +604,9 @@ def is_video(path):
 # The gallery, thumbnails and PNG copies read and decode files, so they run in a thread to keep
 # ComfyUI's progress and previews flowing while the iPad loads a page of them.
 def list_media(folder):
-    output_dir = os.path.abspath(folder_paths.get_output_directory())
-    root = os.path.abspath(os.path.join(output_dir, folder))
-    if os.path.commonpath((root, output_dir)) != output_dir:
-        raise web.HTTPForbidden()
+    output_dir = folder_paths.get_output_directory()
     images = []
-    for dirpath, _, files in os.walk(root):
+    for dirpath, _, files in os.walk(output_path(folder)):
         subfolder = os.path.relpath(dirpath, output_dir).replace(os.sep, "/")
         for filename in files:
             if os.path.splitext(filename)[1].lower() in MEDIA_EXTS:

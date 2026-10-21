@@ -217,7 +217,7 @@ let models = [];
 let turboLora = null;
 let rapidAdapter = null;
 let videoFiles = null;
-// Setup's choices, shared by every device through the PC; generate() refreshes them before each image.
+// Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
 let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] } };
 // Safari and Chrome 155+ show JPEG XL. Other browsers get .jxl images as PNG copies made by the PC.
 const JXL_PROBE = "data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA==";
@@ -1774,8 +1774,8 @@ function bindViewer() {
     const img = $("v-img"), c = middle();
     setZoom({ s: zoom.s, x: fit(zoom.x, c.x, img.offsetWidth * zoom.s / 2, box.clientWidth), y: fit(zoom.y, c.y, img.offsetHeight * zoom.s / 2, box.clientHeight) }, true);
   };
-  const ends = () => [-(viewer.list.length - 1 - viewer.index) * box.clientWidth, viewer.index * box.clientWidth];
-  const nearest = () => within(Math.round(-drag.strip.dx / box.clientWidth));
+  const ends = () => [-(viewer.list.length - 1 - viewer.index) * pageWidth(), viewer.index * pageWidth()];
+  const nearest = () => within(Math.round(-drag.strip.dx / pageWidth()));
   const letGo = (goal, v) => {
     const { strip } = drag;
     drag = null;
@@ -1848,7 +1848,7 @@ function bindViewer() {
     const v = drag.moved && e.timeStamp - last.time < 100 && last.time > first.time ? (last.raw - first.raw) / (last.time - first.time) : 0;
     const moved = drag.raw - drag.from;
     const dir = Math.abs(v) > 0.3 ? -Math.sign(v) : Math.abs(moved) > 60 ? -Math.sign(moved) : 0;
-    const page = -drag.strip.dx / box.clientWidth;
+    const page = -drag.strip.dx / pageWidth();
     if (dir > 0) letGo(within(Math.max(Math.ceil(page), (drag.goal ?? -Infinity) + 1)), v);
     else if (dir < 0) letGo(within(Math.min(Math.floor(page), (drag.goal ?? Infinity) - 1)), v);
     else letGo(nearest(), v);
@@ -2056,7 +2056,6 @@ async function init() {
   }, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resync(); });
   getJson("/studio/host", {}).then(({ host }) => { $("v-reveal").hidden = !host; });
-  getJson("/studio/prefs", prefs).then((p) => { prefs = p; });
   jxlShown = await imageSize(JXL_PROBE).then(() => true, () => false);
   await loadModels();
   // A fresh install has nothing to generate with yet, so it opens on Setup.
