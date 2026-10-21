@@ -1335,39 +1335,33 @@ function layOut(strip, dx) {
 // The page the strip can go to nearest `goal`.
 function within(goal) { return Math.min(Math.max(goal, -viewer.index), viewer.list.length - 1 - viewer.index); }
 
-// The slide playing, if any. Its animations are dropped once it has played.
+// The slide playing, if any. It stops `moving` once in place, while the picture it turned to loads.
 let sliding = null;
 
-// Where a critically damped spring pulls the strip from `from` to `to`, every 1/60 s until it
-// settles. It starts at the finger's speed (`v`, px/ms), capped so it doesn't overshoot. Stiffness 13
-// matches Photos' paging, measured from screen recordings.
-function spring(from, to, v) {
-  const k = 13, c1 = from - to;
-  let c2 = v * 1000 + k * c1;
-  if (c1 * c2 < 0) c2 = 0;
-  const xs = [];
-  for (let t = 0; t < 2; t += 1 / 60) {
-    const y = (c1 + c2 * t) * Math.exp(-k * t);
-    if (t > 0.1 && Math.abs(y) < 0.5) break;
-    xs.push(to + y);
-  }
-  return [...xs, to];
-}
-
-// Springs the strip until the picture `goal` pages along is in place, then shows it for real.
+// Springs the strip until the picture `goal` pages along is in place, then shows it for real. The
+// spring is critically damped and starts at the finger's speed (`v`, px/ms), capped so it doesn't
+// overshoot; stiffness 13 matches Photos' paging, measured from screen recordings. It's drawn frame by
+// frame rather than as an animation, which Safari plays apart from the page: a touch catching one
+// found it a few frames back from where it showed, and the picture jumped back.
 async function slide(strip, goal, v = 0) {
   const cur = shown();
-  const w = pageWidth();
-  const xs = spring(strip.dx, -goal * w, v);
+  const k = 13, to = -goal * pageWidth(), c1 = strip.dx - to;
+  let c2 = v * 1000 + k * c1;
+  if (c1 * c2 < 0) c2 = 0;
   addPeeks(strip, Math.min(goal, 0), Math.max(goal, 0));
-  const anims = [[0, cur], ...strip.peeks].filter(([, e]) => e).map(([k, e]) => {
-    e.style.transform = `translateX(${(k - goal) * w}px)`;
-    return e.animate({ transform: xs.map((x) => `translateX(${x + k * w}px)`) }, (xs.length - 1) * 1000 / 60);
-  });
-  sliding = { cur, strip, goal, anims };
-  // A touch can catch the slide and carry on from there as a drag, which cancels it.
-  try { await Promise.all(anims.map((a) => a.finished)); } catch { return; }
-  sliding.anims = null;
+  const s = sliding = { strip, goal, moving: true };
+  const start = performance.now();
+  // A touch can catch the slide and carry on from there as a drag, which stops it.
+  const settled = await new Promise((done) => requestAnimationFrame(function frame(now) {
+    if (sliding !== s) return done(false);
+    const t = Math.max(0, now - start) / 1000, y = (c1 + c2 * t) * Math.exp(-k * t);
+    if (t > 0.1 && Math.abs(y) < 0.5) return done(true);
+    layOut(strip, to + y);
+    requestAnimationFrame(frame);
+  }));
+  if (!settled) return;
+  layOut(strip, to);
+  s.moving = false;
   if (goal) {
     step(goal);
     // The copy covers the real picture until it has loaded, so nothing blinks.
@@ -1747,12 +1741,9 @@ function bindViewer() {
     let strip = { dx: 0, peeks: new Map() }, goal;
     if (sliding) {
       // After a turn, the new picture takes a moment to load, and can't be caught.
-      if (!sliding.anims) return;
+      if (!sliding.moving) return;
       ({ strip, goal } = sliding);
-      const dx = new DOMMatrix(getComputedStyle(sliding.cur).transform).m41;
-      for (const a of sliding.anims) a.cancel();
       sliding = null;
-      layOut(strip, dx);
       caught = true;
     }
     const [lo, hi] = ends(), dx = strip.dx;
