@@ -1773,7 +1773,9 @@ function bindViewer() {
     if (drag) letGo(nearest());
     caught = false;
     for (const a of $("v-img").getAnimations()) a.finish();
-    if (e.target.closest("video, .viewer-info")) return;
+    // Taps on the buttons are theirs alone, so a second tap on Next goes a page further rather than
+    // catching the slide.
+    if (e.target.closest("video, .viewer-info, button, a")) return;
     // A second finger zooms, unless the first has already sent the strip sliding.
     if (e.touches.length === 2 && !sliding && !$("v-img").hidden) {
       const f = fingers(e), c = middle(), z = zoom ?? { s: 1, x: 0, y: 0 };

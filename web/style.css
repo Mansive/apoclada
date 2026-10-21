@@ -216,8 +216,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   position: fixed; inset: 0; z-index: 20; background: oklch(0 0 0); color: oklch(1 0 0);
   display: grid; grid-template-rows: auto 1fr auto auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  /* Otherwise a long press anywhere selects the nearest text, such as the count at the top. */
-  -webkit-user-select: none; user-select: none;
+  /* Otherwise a long press anywhere selects the nearest text, such as the count at the top, or offers
+     to look up a button's label. */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   /* Zooming the page, even by tapping Prev or Next quickly, would leave gaps around the viewer that
      show the gallery through. Pinches zoom the picture alone instead (app.js). */
   touch-action: pan-x pan-y;
