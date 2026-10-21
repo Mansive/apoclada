@@ -1758,14 +1758,6 @@ function bindViewer() {
     img.style.setProperty("--ar", img.naturalWidth / img.naturalHeight);
     img.style.setProperty("--w", `${img.naturalWidth}px`);
   };
-  // A mouse brings the buttons back when it moves and hides them after 3 s still, unless it rests on one.
-  let idle;
-  area.addEventListener("pointermove", (e) => {
-    if (e.pointerType !== "mouse") return;
-    setBare(false);
-    clearTimeout(idle);
-    if (!e.target.closest(".viewer-top, .viewer-bar, .viewer-info")) idle = setTimeout(() => setBare(true), 3000);
-  });
   // A swipe drags the strip of pictures. Letting go mid-flick, or after a 60 px drag, slides a page
   // on the way it moved; otherwise it settles on the nearest picture. A touch during a slide
   // catches it where it is: holding pauses it, and a swipe goes a page further on from where the
