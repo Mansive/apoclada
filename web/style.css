@@ -47,6 +47,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 main { max-width: 1280px; margin: 0 auto; padding: 16px; }
 
 .create { display: grid; gap: 16px; }
+/* Generate scrolls here on narrow screens; the margin keeps the progress bar clear of the top bar. */
+.stage { scroll-margin-top: 72px; }
 @media (min-width: 900px) {
   .create { grid-template-columns: minmax(340px, 420px) 1fr; align-items: start; }
   .stage { position: sticky; top: 72px; }

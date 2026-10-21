@@ -943,7 +943,7 @@ async function generate() {
   pending.push(data.prompt_id);
   save(PENDING_KEY, pending);
   updateStatus(running ? null : "Queued…");
-  if (window.matchMedia("(max-width: 899px)").matches) $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (window.matchMedia("(max-width: 899px)").matches) document.querySelector(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function cancelAll() {
