@@ -202,7 +202,11 @@ function check(group, key, value) {
 // ComfyUI only sends progress and completion events to the client that queued the job. The "moss-"
 // prefix asks __init__.py to copy every job's events to each Apoclada page, so the id needn't
 // survive a reload; a fresh one per page keeps two open tabs from taking each other's socket.
-const clientId = `moss-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+// /studio?folder=<subfolder> shows only that part of the output folder, and leaves out other
+// pages' jobs so nothing from elsewhere shows up on it either.
+const folder = new URLSearchParams(location.search).get("folder") || "";
+const clientId = `${folder ? "folder-" : "moss-"}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+const galleryUrl = `/studio/images?${new URLSearchParams({ folder })}`;
 
 let settings = { ...DEFAULTS, ...load(SETTINGS_KEY, null) };
 settings.video = { ...DEFAULTS.video, ...settings.video };
@@ -1213,7 +1217,7 @@ function thumbButton(img, onclick) {
 }
 
 async function loadGallery() {
-  gallery = await getJson("/studio/images", []);
+  gallery = await getJson(galleryUrl, []);
   showGalleryCount();
   $("grid").replaceChildren(...(gallery.length
     ? gallery.map((img) => thumbButton(img, () => openViewer(gallery, gallery.indexOf(img))))
@@ -1660,7 +1664,7 @@ async function pickMedia() {
   const refPack = Boolean(videoFiles?.ref_unet);
   const videos = refPack && v.items.filter((i) => i.kind === "video").length < 3;
   $("media-file").accept = refPack ? "image/*,audio/*" : "image/*";
-  const list = (await getJson("/studio/images", [])).filter((img) => videos || !isVideo(img));
+  const list = (await getJson(galleryUrl, [])).filter((img) => videos || !isVideo(img));
   $("picker-grid").replaceChildren(...(list.length ? list.map((img) => thumbButton(img, async () => {
     $("picker").close();
     const item = isVideo(img) ? addMedia({ kind: "video", name: img.filename, subfolder: img.subfolder || "" }) : await addFromGallery(img);

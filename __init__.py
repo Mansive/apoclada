@@ -596,10 +596,13 @@ def is_video(path):
 
 # The gallery, thumbnails and PNG copies read and decode files, so they run in a thread to keep
 # ComfyUI's progress and previews flowing while the iPad loads a page of them.
-def list_media():
-    output_dir = folder_paths.get_output_directory()
+def list_media(folder):
+    output_dir = os.path.abspath(folder_paths.get_output_directory())
+    root = os.path.abspath(os.path.join(output_dir, folder))
+    if os.path.commonpath((root, output_dir)) != output_dir:
+        raise web.HTTPForbidden()
     images = []
-    for dirpath, _, files in os.walk(output_dir):
+    for dirpath, _, files in os.walk(root):
         subfolder = os.path.relpath(dirpath, output_dir).replace(os.sep, "/")
         for filename in files:
             if os.path.splitext(filename)[1].lower() in MEDIA_EXTS:
@@ -614,7 +617,7 @@ def list_media():
 
 @routes.get("/studio/images")
 async def studio_images(request):
-    return web.json_response(await asyncio.to_thread(list_media))
+    return web.json_response(await asyncio.to_thread(list_media, request.query.get("folder", "")))
 
 
 def first_frame(path):
