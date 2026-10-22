@@ -222,9 +222,9 @@ unless that doesn't fit. Swipe between images, and pinch to zoom, which hides th
 
 ## Setup options
 
-- **Image files:** PNG, or JPEG XL (lossless or lossy, much smaller). Both keep the workflow, so
+- **Image files:** PNG, or JPEG XL. Both keep the workflow, so
   Reuse settings works.
-- **Video files:** H.264 (plays everywhere) or H.265 (smaller), encoded by an NVIDIA or AMD
+- **Video files:** H.264 or H.265, encoded by an NVIDIA or AMD
   graphics card or by the CPU. Setup only lists the encoders that actually work on the PC.
 - **Updates:** checks the git remote this folder came from, pulls new commits and restarts ComfyUI.
   It also warns when ComfyUI is older than Apoclada needs.
