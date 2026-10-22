@@ -1,4 +1,5 @@
-import { MODES, ROLES, models, turboLora, rapidAdapter, videoFiles, prefs, dimensions, videoDimensions, usesRefs, mediaPath } from "./app.js";
+import { MODES, ROLES, models, turboLora, rapidAdapter, videoFiles, dimensions, videoDimensions, usesRefs, mediaPath } from "./app.js";
+import { prefs } from "./setup.js";
 import { FRAMES_LINE, KREA2_ENHANCE, MOSS_ENHANCE, START_LINE } from "./prompts.js";
 
 // H3 frame counts sit on a 17k+5 grid at 24 fps.
