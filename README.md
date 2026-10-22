@@ -2,6 +2,8 @@
 
 Apoclada is a simple and mobile-friendly app to generate images and videos with ComfyUI. It lives at `/studio` inside ComfyUI, so you can make images from your phone or tablet while your PC does the heavy lifting. Pick a model, type a prompt, and tap Generate. A gallery, model downloads, and one-tap updates are provided.
 
+竹.
+
 ## Features
 
 - **Images** with MOSS-Image or Kroma (lodestones' Krea 2 fine-tune), with optional prompt enhancement
