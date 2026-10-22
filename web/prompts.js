@@ -52,8 +52,8 @@ export const FRAMES_LINE = /^(For the target video|How the reference pictures al
 // Krea 2's prompting guide asks for natural-language sentences and quoted text, so Kroma gets the same
 // scene in prose, ordered like the guide's examples: subject and details, then lighting, style and framing.
 export const KREA2_PROMPT = "Hatsune Miku sits at a small table by the rain-streaked window of a corner café on a rainy evening, smiling softly as she holds a steaming mug in both hands. She wears a cream knit sweater, and her long teal twintails fall over her shoulders. A small chalkboard on the table reads \"Open late\" in white chalk. Warm amber light from a pendant lamp falls across her face, while the street outside glows cool blue with blurred city lights. Soft anime illustration with clean lines and a muted, warm color palette, seen from the side at eye level in a medium shot. The mood is calm and cozy.";
-// "Enhance prompt" copies the prompt rewriters in ComfyUI's MOSS and Krea 2 templates
-// (comfyui-workflow-templates 0.11.89): the text encoder rewrites the prompt with TextGenerate first.
+// "Enhance prompt" adapts the prompt rewriters in ComfyUI's MOSS and Krea 2 templates
+// (comfyui-workflow-templates 0.11.89, MIT, see NOTICE): the text encoder rewrites the prompt with TextGenerate first.
 // MOSS passes its instructions as the system prompt; Krea 2's template puts them in front of the prompt.
 export const MOSS_ENHANCE = `You turn a user's image idea into one detailed caption for a text-to-image model. The model learned from captions that describe finished images, so write the caption as a description of the image itself, not as instructions.
 
