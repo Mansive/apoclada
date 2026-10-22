@@ -233,12 +233,13 @@ export function buildVideoWorkflow(s) {
     "10": { class_type: "BasicGuider", inputs: { model, conditioning: positive } },
     "16": { class_type: "SamplerCustomAdvanced", inputs: { noise: ["7", 0], guider: ["10", 0], sampler: ["8", 0], sigmas: ["9", 0], latent_image: ["4", 1] } },
     "17": { class_type: "VAEDecode", inputs: { samples: ["16", 0], vae: ["3", 0] } },
-    "22": { class_type: "VAEDecodeAudio", inputs: { samples: ["16", 0], vae: ["19", 0] } },
+    // Orbits are silent, as the LoRA recommends.
+    ...(!orbit && { "22": { class_type: "VAEDecodeAudio", inputs: { samples: ["16", 0], vae: ["19", 0] } } }),
     "23": {
       class_type: "CreateVideo",
       inputs: head
         ? { images: [add("BatchImagesNode", { "images.image0": [head.images, 0], "images.image1": ["17", 0] }), 0], audio: [add("AudioConcat", { audio1: [head.audio, 0], audio2: ["22", 0], direction: "after" }), 0], fps: 24 }
-        : { images: ["17", 0], audio: ["22", 0], fps: 24 },
+        : { images: ["17", 0], ...(!orbit && { audio: ["22", 0] }), fps: 24 },
     },
     // Codec and encoder come from Setup.
     "18": { class_type: "ApocladaSaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", codec: prefs.video_codec, encoder: prefs.video_encoder ?? "software" } },

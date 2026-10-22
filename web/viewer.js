@@ -477,6 +477,7 @@ async function extendCurrent() {
   const info = await imageInfo(item);
   const e = info?.encoding;
   if (e?.fps !== 24 || !(e.frames >= 48)) { toast("Only 24 fps videos of 2 seconds or more can be extended"); return; }
+  if (!e.audio) { toast("Videos without sound, like orbits, can't be extended"); return; }
   editVideo((v) => {
     v.extend = { kind: "video", name: item.filename, subfolder: item.subfolder || "", width: info.width, height: info.height, frames: e.frames };
     // The video it continues is where it starts.

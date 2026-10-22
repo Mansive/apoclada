@@ -190,8 +190,8 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
   or a partway frame. In the viewer, **Animate** starts from an image; **Extend** continues a video.
 - **References** (MiniMax H3 references pack): pictures, videos and voices the video follows. Name
   them in the prompt by their captions, like `<Picture 1>`. Turbo runs them in 4 steps.
-- **360° orbit** (Settings, with the orbit pack): freezes the start image and circles the camera once
-  around it, ending where it began. It uses the LoRA's own prompt. Trained on people, in 3 s squares.
+- **360° orbit** (Settings, orbit pack): the camera circles a frozen start image once and ends where
+  it began, without sound or Extend. Uses the LoRA's own prompt; trained on people in 3 s squares.
 - **Prompt:** H3 reads three fields: the shots, the ambient sound and the background music. Each
   shot can have camera moves, a cut time (`At 00:01.500`) and spoken lines in `<d>` tags. The
   example prompts show the format.
