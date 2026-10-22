@@ -46,6 +46,8 @@ Rain patters steadily against the window glass, the ceramic mug clinks softly on
 
 non_diegetic_music:
 A slow lo-fi piano melody with soft brushed drums.`;
+// pablodawson's 360° orbit LoRA was trained with this one caption and asks for it verbatim.
+export const ORBIT_PROMPT = "One frozen instant. Only the camera moves. In a continuous 360 orbit. Preserve every person and object in exactly the same world position, orientation, shape and pose throughout the shot. Airborne objects remain suspended at the captured height and angle: no wobbling, shaking, spinning, drifting, falling or continued action. Keep faces, hands, clothing, liquids and the background motionless while retaining their natural appearance. Camera parallax is the only source of apparent movement. No cuts, zoom, morphing or added objects.";
 // MiniMax's guide opens prompts with start or end images with a line saying where they fall in the video.
 export const START_LINE = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
 export const FRAMES_LINE = /^(For the target video|How the reference pictures align)[^\n]*\n\n/;

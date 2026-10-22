@@ -81,6 +81,8 @@ FILES = {
     "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors": ("loras", f"{HF}/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 366647000),
     "minimax_h3_ref2va_pruned_int8_convrot.safetensors": ("diffusion_models", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", 20970379616),
     "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": ("loras", f"{HF}/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors", 1956193000),
+    # pablodawson/MiniMax-H3-360-Orbit-LoRA: a frozen-time 360° camera orbit between matching start and end frames.
+    "minimax_h3_flf2v_lora_v1.safetensors": ("loras", f"{HF}/pablodawson/MiniMax-H3-360-Orbit-LoRA/resolve/main/minimax_h3_flf2v_lora_v1.safetensors", 155111424),
 }
 MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "clip": "qwen3.5_9b_w4a8_gptq.safetensors", "vae": "flux2-vae_small.safetensors"}
 TURBO_LORA = "moss-image-sft-8step-dmd.safetensors"
@@ -103,6 +105,7 @@ H3_REF = {
     "ref_unet": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
     "ref_lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
 }
+H3_ORBIT = {"orbit_lora": "minimax_h3_flf2v_lora_v1.safetensors"}
 # What the Setup screen offers. Kroma is on Civitai, which only lets signed-in accounts download,
 # so it's fetched by hand and only its text encoder and VAE come from here.
 PACKS = [
@@ -112,6 +115,8 @@ PACKS = [
      "manual": {"url": "https://civitai.com/models/2997793", "file": "kromaKrea2_opd.safetensors", "folder": "models/diffusion_models"}},
     {"id": "video", "name": "MiniMax H3", "about": "Videos with sound, from a prompt, start and end images, or images partway through.", "files": list(H3.values())},
     {"id": "video_refs", "name": "MiniMax H3 references", "about": "Lets videos follow reference images, videos and voices. Needs the MiniMax H3 pack.", "files": list(H3_REF.values())},
+    {"id": "video_orbit", "name": "MiniMax H3 360° orbit", "about": "Circles the camera once around a frozen start image. Needs the MiniMax H3 pack.",
+     "files": list(H3_ORBIT.values())},
 ]
 
 routes = PromptServer.instance.routes
@@ -440,7 +445,7 @@ async def studio_turbo(request):
 # Video mode is offered only when every H3 file is present; the LoRAs and the reference model are optional.
 @routes.get("/studio/video")
 async def studio_video(request):
-    files = {key: name if have(name) else None for key, name in {**H3, **H3_REF}.items()}
+    files = {key: name if have(name) else None for key, name in {**H3, **H3_REF, **H3_ORBIT}.items()}
     if not all(files[k] for k in ("unet", "clip", "vae", "audio_vae")):
         return web.json_response(None)
     return web.json_response(files)

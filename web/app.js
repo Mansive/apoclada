@@ -1,6 +1,6 @@
 // The form, generation and Setup. Workflows and the viewer import the settings and the PC's files from here.
-import { ANIMATE_PROMPT, KREA2_PROMPT, MOSS_PROMPT, REFERENCE_PROMPT, VIDEO_PROMPT } from "./prompts.js";
-import { buildKrea2Workflow, buildMossWorkflow, buildRapidWorkflow, buildVideoWorkflow, buildWorkflow, videoLoras, videoMode, videoSteps } from "./workflows.js";
+import { ANIMATE_PROMPT, KREA2_PROMPT, MOSS_PROMPT, ORBIT_PROMPT, REFERENCE_PROMPT, VIDEO_PROMPT } from "./prompts.js";
+import { buildKrea2Workflow, buildMossWorkflow, buildRapidWorkflow, buildVideoWorkflow, buildWorkflow, orbits, videoLoras, videoMode, videoSteps } from "./workflows.js";
 import { bindViewer, duration, loadGallery, openViewer, thumbButton } from "./viewer.js";
 import { loadPrefs, loadSetup, loadUpdates, refreshPrefs } from "./setup.js";
 
@@ -61,7 +61,7 @@ const DEFAULTS = {
   aspect: "1:1", mp: 1, ...MODES.full.tuning, seed: 42,
   randomSeed: true, batch: 1, model: "", enhance: false, easyCache: false,
   mode: "full", tuning: {}, kind: "image",
-  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null },
+  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null, orbit: false },
 };
 // MiniMax H3 is trained on a 768 short edge capped at 768×1344; the official template defaults to ~0.4 MP.
 // 0.98 MP is H3's native canvas (1344×768 at 16:9); Comfy's guide warns 1 MP rounds above it.
@@ -273,6 +273,7 @@ export function syncForm() {
   $("settings-summary").textContent = (video
     ? [
         VIDEO_MODES[videoMode(v)],
+        orbits(v) ? "360° orbit" : "",
         `${vsize.width}×${vsize.height}`,
         `${videoSteps(v, videoMode(v))} steps`,
         `${v.extend ? "+" : ""}${v.seconds} s`,
@@ -327,6 +328,10 @@ function syncVideoForm() {
   }
   check($("video-mode"), "mode", mode);
   setUnused($("vsteps-field"), mode !== "quality", `${VIDEO_MODES[mode]} always uses ${videoSteps(v, mode)} steps`);
+  $("orbit-field").hidden = !videoFiles?.orbit_lora;
+  $("orbit").checked = v.orbit;
+  setUnused($("orbit-field"), !orbits({ ...v, orbit: true }),
+    usesRefs(v) ? "Not available with references" : v.extend ? "Not available when continuing a video" : "Needs a start image");
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);
@@ -422,6 +427,7 @@ export function editVideo(change) {
 }
 
 function videoPrompt(v) {
+  if (orbits(v)) return ORBIT_PROMPT;
   return usesRefs(v) ? REFERENCE_PROMPT : v.items.some((i) => i.role === "start") ? ANIMATE_PROMPT : VIDEO_PROMPT;
 }
 
@@ -562,6 +568,7 @@ function bindForm() {
   addSliderButtons();
   $("prompt").oninput = (e) => { (settings.kind === "video" ? settings.video : settings).prompt = e.target.value; save(SETTINGS_KEY, settings); };
   $("length").oninput = (e) => { settings.video.seconds = Number(e.target.value); syncForm(); };
+  $("orbit").onchange = (e) => editVideo((v) => { v.orbit = e.target.checked; });
   $("vsteps").oninput = (e) => { settings.video.steps = Number(e.target.value); syncForm(); };
   $("media-file").onchange = async (e) => {
     const file = e.target.files[0];
@@ -597,7 +604,7 @@ function bindForm() {
   $("reset").onclick = () => {
     const { video, kind } = settings;
     if (kind === "video") {
-      settings.video = { ...DEFAULTS.video, prompt: video.prompt, items: video.items, extend: video.extend };
+      settings.video = { ...DEFAULTS.video, prompt: video.prompt, items: video.items, extend: video.extend, orbit: video.orbit };
       Object.assign(settings, { seed: DEFAULTS.seed, randomSeed: DEFAULTS.randomSeed });
     } else {
       settings = { ...DEFAULTS, ...MODES[settings.mode].tuning, prompt: settings.prompt, negative: settings.negative, model: settings.model, mode: settings.mode, tuning: {}, video, kind };

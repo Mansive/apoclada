@@ -136,6 +136,11 @@ export function videoMode(v) {
   return v.mode !== "quality" && loras[mode][0] ? mode : "quality";
 }
 
+// The orbit LoRA turns a start image into a camera orbit that ends where it began, on the image-to-video model.
+export function orbits(v) {
+  return Boolean(v.orbit && videoFiles?.orbit_lora && !usesRefs(v) && !v.extend && v.items.some((i) => i.role === "start"));
+}
+
 export function videoSteps(v, mode) {
   return mode === "quality" ? v.steps : videoLoras(v)[mode][1];
 }
@@ -162,7 +167,8 @@ export function buildVideoWorkflow(s) {
   const refs = usesRefs(v);
   const mode = videoMode(v);
   const lora = mode === "quality" ? null : videoLoras(v)[mode][0];
-  const model = [lora ? "20" : "1", 0];
+  const orbit = orbits(v);
+  const model = [orbit ? "21" : lora ? "20" : "1", 0];
   // Extending makes a new video that opens on the old one's last 22 frames, from a second before its end.
   const length = videoLength(v.seconds + (v.extend ? 1 : 0));
   const graph = {
@@ -171,12 +177,13 @@ export function buildVideoWorkflow(s) {
     "3": { class_type: "VAELoader", inputs: { vae_name: videoFiles.vae } },
     "19": { class_type: "VAELoader", inputs: { vae_name: videoFiles.audio_vae } },
     ...(lora && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: lora, strength_model: 1, model: ["1", 0] } } }),
+    ...(orbit && { "21": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: videoFiles.orbit_lora, strength_model: 1, model: [lora ? "20" : "1", 0] } } }),
   };
   let next = 50;
   const add = (class_type, inputs) => { graph[next] = { class_type, inputs }; return String(next++); };
   const image = (item) => [add("LoadImage", { image: mediaPath(item) }), 0];
   const video = (item) => add("GetVideoComponents", { video: [add("LoadVideo", { file: `${mediaPath(item)} [output]` }), 0] });
-  const ends = ["start", "end"].map((role) => v.items.find((i) => i.role === role)).filter(Boolean);
+  const ends = (orbit ? ["start"] : ["start", "end"]).map((role) => v.items.find((i) => i.role === role)).filter(Boolean);
   const guides = [];
   let head = null;
   if (v.extend) {
@@ -205,10 +212,13 @@ export function buildVideoWorkflow(s) {
     graph["4"] = { class_type: "MiniMaxH3ReferenceToVideo", inputs };
     for (const i of ends) guides.push({ image: image(i), frame_idx: ROLES[i.role].frame });
   } else {
-    const line = !FRAMES_LINE.test(v.prompt) && framesLine(v, length);
+    const line = !orbit && !FRAMES_LINE.test(v.prompt) && framesLine(v, length);
+    const frames = Object.fromEntries(ends.map((i) => [ROLES[i.role].input, image(i)]));
+    // The orbit comes back around to the start image, so it's the end image too. Its prompt stays verbatim.
+    if (orbit) frames.last_frame = frames.first_frame;
     graph["4"] = {
       class_type: "MiniMaxH3ImageToVideo",
-      inputs: { ...shared, prompt: line ? `${line}\n\n${v.prompt}` : v.prompt, ...Object.fromEntries(ends.map((i) => [ROLES[i.role].input, image(i)])) },
+      inputs: { ...shared, prompt: line ? `${line}\n\n${v.prompt}` : v.prompt, ...frames },
     };
   }
   for (const i of v.items.filter((i) => i.role === "at")) {

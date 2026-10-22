@@ -269,6 +269,12 @@ function savedMode(graph) {
   return Object.keys(MODES).find((m) => MODES[m].node && inputsOf(graph, MODES[m].node)) ?? "full";
 }
 
+// A saved video's mode LoRA, if any, and whether the orbit LoRA ran after it.
+function videoLoras(graph) {
+  const names = Object.values(graph).filter((n) => n.class_type === "LoraLoaderModelOnly").map((n) => n.inputs.lora_name);
+  return { lora: names.find((name) => name !== videoFiles?.orbit_lora), orbit: names.includes(videoFiles?.orbit_lora) };
+}
+
 function h3Node(graph) { return inputsOf(graph, "MiniMaxH3ImageToVideo") ?? inputsOf(graph, "MiniMaxH3ReferenceToVideo"); }
 
 function infoRows(info) {
@@ -278,8 +284,8 @@ function infoRows(info) {
   const size = `${info.width}×${info.height}`;
   const h3 = h3Node(graph);
   if (h3) {
-    const lora = find("LoraLoaderModelOnly")?.lora_name;
-    const mode = !lora ? "" : lora === videoFiles?.fast_lora ? " · Fast" : " · Turbo";
+    const { lora, orbit } = videoLoras(graph);
+    const mode = `${!lora ? "" : lora === videoFiles?.fast_lora ? " · Fast" : " · Turbo"}${orbit ? " · 360° orbit" : ""}`;
     const { items, extend } = videoMedia(graph, h3);
     const tags = referenceTags({ items });
     const e = info.encoding;
@@ -437,12 +443,14 @@ function reuseVideo(graph, h3) {
   const v = settings.video;
   v.prompt = h3.prompt.replace(FRAMES_LINE, "");
   v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24) - (extend ? 1 : 0)));
-  const lora = inputsOf(graph, "LoraLoaderModelOnly")?.lora_name;
+  const { lora, orbit } = videoLoras(graph);
   v.mode = !lora ? "quality" : lora === videoFiles.fast_lora ? "fast" : "turbo";
+  v.orbit = orbit;
   const scheduler = inputsOf(graph, "BasicScheduler");
   if (!lora && scheduler) v.steps = scheduler.steps;
   v.mp = nearest(VIDEO_MP, h3.width * h3.height);
-  v.items = items;
+  // An orbit's end image is its start image again, which the orbit adds itself.
+  v.items = orbit ? items.filter((i) => i.role !== "end") : items;
   v.extend = extend;
   v.aspect = nearestAspect(h3.width, h3.height);
   settings.seed = inputsOf(graph, "RandomNoise")?.noise_seed ?? settings.seed;

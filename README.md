@@ -78,6 +78,7 @@ Downloads keep running if you close the page, and a stopped download resumes whe
 | Kroma | Images in 8 steps | 5.1 GB, plus the model itself |
 | MiniMax H3 | Videos with sound | 41.7 GB |
 | MiniMax H3 references | Videos that follow reference pictures, videos and voices | 22.9 GB |
+| MiniMax H3 360° orbit | Videos that circle the camera around a frozen start image | 155 MB |
 
 - **Kroma** is hosted on Civitai, which only lets signed-in accounts download. Setup links to it.
   Download `kromaKrea2_opd.safetensors` yourself and put it in `models/diffusion_models`. Setup
@@ -139,6 +140,7 @@ Apoclada differs and why. Speed figures were measured on an RX 9070.
 | Turbo LoRA (8 steps) | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16` | Comfy-Org/MiniMax-H3 |
 | Fast LoRA (4 steps) | `minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16` | Kijai/MiniMax-H3-experimental |
 | References model and Turbo LoRA (4 steps) | `minimax_h3_ref2va_pruned_int8_convrot`, `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16` | Comfy-Org/MiniMax-H3 |
+| 360° orbit LoRA | `minimax_h3_flf2v_lora_v1` | pablodawson/MiniMax-H3-360-Orbit-LoRA |
 
 - **Video VAE:** the template uses Comfy-Org's `minimax_h3_video_vae_int8_convrot`. LynnReal's
   light VAE keeps the same encoder but cuts the decoder from 36 to 26 blocks. Decoding is about
@@ -188,6 +190,8 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
   or a partway frame. In the viewer, **Animate** starts from an image; **Extend** continues a video.
 - **References** (MiniMax H3 references pack): pictures, videos and voices the video follows. Name
   them in the prompt by their captions, like `<Picture 1>`. Turbo runs them in 4 steps.
+- **360° orbit** (Settings, with the orbit pack): freezes the start image and circles the camera once
+  around it, ending where it began. It uses the LoRA's own prompt. Trained on people, in 3 s squares.
 - **Prompt:** H3 reads three fields: the shots, the ambient sound and the background music. Each
   shot can have camera moves, a cut time (`At 00:01.500`) and spoken lines in `<d>` tags. The
   example prompts show the format.
