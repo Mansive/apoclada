@@ -1,9 +1,6 @@
 # Apoclada
 
-A touch-friendly image and video app for ComfyUI. It runs inside ComfyUI at `/studio`, so you can
-generate from a phone or tablet while the PC does the work. There are no node graphs to wire up:
-pick a model, write a prompt and press Generate. Generation goes through ComfyUI's own API;
-Apoclada adds the page, a gallery, model downloads and one-tap updates.
+Apoclada is a simple and mobile-friendly app to generate images and videos with ComfyUI. It lives at `/studio` inside ComfyUI, so you can make images from your phone or tablet while your PC does the heavy lifting. Pick a model, type a prompt, and tap Generate. A gallery, model downloads, and one-tap updates are provided.
 
 ## Features
 
