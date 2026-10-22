@@ -539,9 +539,10 @@ async def studio_setup_cancel(request):
     return web.json_response({"cancelled": True})
 
 
-# Updates come from the git remote this folder was cloned from. The fetch result is kept for an
-# hour so opening the page doesn't hit the network every time.
-update_check = {"time": 0, "behind": 0}
+# Updates come from the git remote this folder was cloned from. It's fetched at most once an hour
+# so opening the page doesn't hit the network every time; how far behind is counted fresh each
+# time, so a pull made outside the page shows at once.
+last_fetch = 0
 
 
 async def git(*command):
@@ -559,16 +560,19 @@ def version_tuple(version):
 
 @routes.get("/studio/update")
 async def studio_update_check(request):
+    global last_fetch
     log_code, version = await git("log", "-1", "--format=%h · %cs")
     code, upstream = await git("rev-parse", "--abbrev-ref", "@{upstream}")
-    if code == 0 and (request.rel_url.query.get("check") or time.time() - update_check["time"] > 3600):
-        if (await git("fetch", "--quiet"))[0] == 0:
-            _, behind = await git("rev-list", "--count", "HEAD..@{upstream}")
-            update_check.update(time=time.time(), behind=int(behind or 0))
+    behind = "0"
+    if code == 0:
+        if request.rel_url.query.get("check") or time.time() - last_fetch > 3600:
+            if (await git("fetch", "--quiet"))[0] == 0:
+                last_fetch = time.time()
+        _, behind = await git("rev-list", "--count", "HEAD..@{upstream}")
     return web.json_response({
         "version": version if log_code == 0 else None,
         "source": upstream if code == 0 else None,
-        "behind": update_check["behind"] if code == 0 else 0,
+        "behind": int(behind or 0),
         "comfyui": COMFYUI_VERSION, "comfyui_min": COMFYUI_MIN,
         "comfyui_ok": version_tuple(COMFYUI_VERSION) >= version_tuple(COMFYUI_MIN),
     })
@@ -579,7 +583,6 @@ async def studio_update(request):
     code, out = await git("pull", "--ff-only")
     if code != 0:
         return web.json_response({"error": out}, status=500)
-    update_check["behind"] = 0
     restart()
     return web.json_response({"updated": out})
 
