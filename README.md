@@ -36,7 +36,8 @@ Apoclada adds the page, a gallery, model downloads and one-tap updates.
 
 To use Apoclada from another device on your network, start ComfyUI with `--listen` and open
 `http://<PC's IP address>:8188/studio`. On iPhone or iPad, Share › Add to Home Screen opens it
-full-screen like an app.
+full-screen like an app. `tools/start-comfyui.bat` starts ComfyUI that way, with the settings
+Apoclada was tested with on AMD (ROCm, ComfyUI's Python in `ComfyUI/.venv`).
 
 ## Models
 
