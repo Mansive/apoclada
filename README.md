@@ -1,9 +1,9 @@
 # Apoclada
 
-A touch-friendly image and video app for ComfyUI. It runs inside ComfyUI at `/studio`, so you can
-generate from a phone or tablet while the PC does the work. There are no node graphs to wire up:
-pick a model, write a prompt and press Generate. Generation goes through ComfyUI's own API;
-Apoclada adds the page, a gallery, model downloads and one-tap updates.
+Apoclada is a simple and mobile-friendly interface to generate images and videos with ComfyUI. It
+lives at `/studio` inside ComfyUI, so you can make images from your phone or tablet while your PC
+does the heavy lifting. No need to wire up any nodes. Pick a model, type a prompt, and tap Generate.
+You also get a gallery, model downloads, and one-tap updates for Apoclada itself.
 
 ## Features
 
@@ -28,16 +28,44 @@ Apoclada adds the page, a gallery, model downloads and one-tap updates.
 ## Install
 
 1. Put this folder in `ComfyUI/custom_nodes/apoclada_studio`. Cloning it with git lets Setup
-   update it later.
-2. Start ComfyUI and open <http://localhost:8188/studio>.
+   update it later. From the `ComfyUI/custom_nodes` folder:
+
+   ```
+   git clone <this repository's URL> apoclada_studio
+   ```
+
+2. Start (or restart) ComfyUI and open <http://localhost:8188/studio>.
 3. For JPEG XL images, press **Install and restart** under Image files in Setup. It installs
    `requirements.txt` into ComfyUI's Python with pip, or with uv if that Python has no pip.
    Without it Apoclada still works and saves PNG.
 
-To use Apoclada from another device on your network, start ComfyUI with `--listen` and open
-`http://<PC's IP address>:8188/studio`. On iPhone or iPad, Share › Add to Home Screen opens it
-full-screen like an app. `tools/start-comfyui.bat` starts ComfyUI that way, with the settings
-Apoclada was tested with on AMD (ROCm, ComfyUI's Python in `ComfyUI/.venv`).
+To remove Apoclada, delete its folder. The models it downloaded stay in ComfyUI's `models` folder,
+and its Setup choices in `ComfyUI/user/apoclada_studio.json`.
+
+### Using it from a phone or tablet
+
+1. Start ComfyUI with `--listen`, so it accepts connections from other devices.
+   `tools/start-comfyui.bat` does this, with the settings Apoclada was tested with on AMD (ROCm,
+   ComfyUI's Python in `ComfyUI/.venv`).
+2. The first time, Windows may ask whether Python can use the network. Allow it on private networks.
+3. Find the PC's IP address: run `ipconfig` and look for the IPv4 address, such as `192.168.1.20`.
+4. On the phone or tablet, connected to the same Wi-Fi, open `http://<that address>:8188/studio`.
+5. On iPhone or iPad, Share › Add to Home Screen opens it full-screen like an app.
+
+ComfyUI has no password. With `--listen`, anyone on your network can open Apoclada, generate, and
+delete files, so only use it on a network you trust, and never forward the port to the internet.
+
+## Your first image
+
+The page has three tabs: **Create** to generate, **Gallery** for your files, and **Setup** for
+models and options. A fresh install opens on Setup, since there is nothing to generate with yet.
+
+1. In Setup, download the **MOSS-Image** pack. It's the quickest way in.
+2. Open Create, pick MOSS-Image and the **Turbo** mode.
+3. Replace the example prompt with your own, or keep it, and press **Generate**.
+
+The first job takes longer, because ComfyUI loads the models into memory first. Finished images
+appear under the form and in the Gallery, and are saved in ComfyUI's `output/studio` folder.
 
 ## Models
 
@@ -127,7 +155,14 @@ Choose a model, write a prompt and press **Generate**. Each model starts with an
 written in the style its guide recommends; **Default prompts** brings it back.
 
 **Settings** holds shape, size, steps, prompt strength (CFG), seed and the number of images.
-Settings that don't apply to the current mode are grayed out.
+Settings that don't apply to the current mode are grayed out. With **Randomize** on, every Generate
+picks a new seed; turn it off to keep the seed and change only the prompt or a setting.
+
+Pressing Generate while a job is running adds the new one to the queue. Jobs started from another
+device show up too, so a phone and the PC can share the queue.
+
+MOSS-Image understands a line of tags followed by sentences describing the scene, as in its example
+prompt. Kroma prefers plain sentences. Put any text that should appear in the image in quotes.
 
 MOSS-Image has three modes:
 
@@ -194,6 +229,17 @@ unless that doesn't fit. Swipe between images, and pinch to zoom, which hides th
 
 ## Stopping a job
 
-**Cancel** stops the current job, leaving the rest queued, the next time ComfyUI checks, which can take minutes during a long video.
-If that's too slow, the button turns into **Force stop**. Force stop restarts ComfyUI with the same
-command line. The current job is lost, and models load again on the next run.
+**Cancel** stops the current job and leaves the rest queued. It takes effect the next time ComfyUI
+checks, which can take minutes during a long video. If that's too slow, the button turns into
+**Force stop**, which restarts ComfyUI with the same command line. The current job is lost, and
+models load again on the next run.
+
+## Troubleshooting
+
+- **The page doesn't open on the phone or tablet:** check that ComfyUI was started with `--listen`,
+  that both devices are on the same network, and that Windows allows Python through the firewall.
+- **A dot on the Setup tab:** an Apoclada update is available, or ComfyUI is too old for Apoclada.
+- **A mode button is missing or grayed out:** its files aren't downloaded yet. MOSS Fast also needs
+  the rapid-moss custom node (see [Models](#models)).
+- **Out of memory errors:** lower the image or video size, or the number of images.
+- **"Can't reach the PC":** ComfyUI has stopped or is restarting. The page reconnects once it's back.
