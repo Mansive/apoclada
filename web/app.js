@@ -328,11 +328,11 @@ function syncVideoForm() {
   $("video-mode").className = orbit.hidden ? "segmented" : "segmented four";
   $("orbit-note").hidden = orbit.hidden;
   for (const b of $("video-mode").children) {
-    const steps = b.dataset.mode === "quality" ? DEFAULTS.video.steps : loras[b.dataset.mode]?.[1];
+    const steps = ["quality", "orbit"].includes(b.dataset.mode) ? DEFAULTS.video.steps : loras[b.dataset.mode]?.[1];
     b.querySelector("small").textContent = steps ? `${steps} steps` : "";
   }
   check($("video-mode"), "mode", mode);
-  setUnused($("vsteps-field"), mode !== "quality", `${VIDEO_MODES[mode]} always uses ${videoSteps(v, mode)} steps`);
+  setUnused($("vsteps-field"), Boolean(loras[mode]?.[1]),`${VIDEO_MODES[mode]} always uses ${videoSteps(v, mode)} steps`);
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);

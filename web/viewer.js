@@ -269,12 +269,10 @@ function savedMode(graph) {
   return Object.keys(MODES).find((m) => MODES[m].node && inputsOf(graph, MODES[m].node)) ?? "full";
 }
 
-// The mode a saved video ran in, told apart by its LoRAs. Orbit runs Turbo's LoRA too.
+// The mode a saved video ran in, told apart by its LoRA.
 function savedVideoMode(graph) {
-  const names = Object.values(graph).filter((n) => n.class_type === "LoraLoaderModelOnly").map((n) => n.inputs.lora_name);
-  if (!names.length) return "quality";
-  if (names.includes(videoFiles?.orbit_lora)) return "orbit";
-  return names.includes(videoFiles?.fast_lora) ? "fast" : "turbo";
+  const lora = inputsOf(graph, "LoraLoaderModelOnly")?.lora_name;
+  return !lora ? "quality" : lora === videoFiles?.orbit_lora ? "orbit" : lora === videoFiles?.fast_lora ? "fast" : "turbo";
 }
 
 function h3Node(graph) { return inputsOf(graph, "MiniMaxH3ImageToVideo") ?? inputsOf(graph, "MiniMaxH3ReferenceToVideo"); }
@@ -446,7 +444,7 @@ function reuseVideo(graph, h3) {
   v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24) - (extend ? 1 : 0)));
   v.mode = savedVideoMode(graph);
   const scheduler = inputsOf(graph, "BasicScheduler");
-  if (v.mode === "quality" && scheduler) v.steps = scheduler.steps;
+  if (["quality", "orbit"].includes(v.mode) && scheduler) v.steps = scheduler.steps;
   v.mp = nearest(VIDEO_MP, h3.width * h3.height);
   // An orbit's end image is its start image again, which the orbit adds itself.
   v.items = v.mode === "orbit" ? items.filter((i) => i.role !== "end") : items;

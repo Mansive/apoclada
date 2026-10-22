@@ -124,12 +124,11 @@ export function buildKrea2Workflow(s, model, width, height) {
 }
 
 // Each mode's LoRA and steps. The reference model has its own Turbo LoRA, which ComfyUI's template
-// runs at 4 steps, and no Fast or Orbit one. Orbit adds pablodawson's 360° orbit LoRA after Turbo's,
-// so it needs both.
+// runs at 4 steps, and no Fast or Orbit one. Orbit isn't distilled, so it takes Quality's steps.
 export function videoLoras(v) {
   return usesRefs(v)
     ? { turbo: [videoFiles?.ref_lora, 4] }
-    : { turbo: [videoFiles?.lora, 8], fast: [videoFiles?.fast_lora, 4], orbit: [videoFiles?.lora && videoFiles?.orbit_lora, 8] };
+    : { turbo: [videoFiles?.lora, 8], fast: [videoFiles?.fast_lora, 4], orbit: [videoFiles?.orbit_lora] };
 }
 
 // An orbit turns a start image into a camera orbit that ends where it began, so it can't continue a video.
@@ -144,7 +143,7 @@ export function videoMode(v) {
 }
 
 export function videoSteps(v, mode) {
-  return mode === "quality" ? v.steps : videoLoras(v)[mode][1];
+  return videoLoras(v)[mode]?.[1] ?? v.steps;
 }
 
 // The line that opens the prompt for a start image, an end image or both, from MiniMax's guide:
@@ -159,9 +158,9 @@ function framesLine(v, length) {
 }
 
 // Mirrors ComfyUI's official MiniMax H3 templates: no CFG, res_multistep, 8 steps with the turbo LoRA,
-// or 20 by default without it. Fast swaps in the DMAD LoRA at 4 steps. Start and end images go to
-// Image to Video, which shows them to the text encoder; images partway are Add Guide nodes at their
-// frame. References switch to the reference model and its node, where every keyframe is an Add Guide.
+// or 20 by default without it. Fast swaps in the DMAD LoRA at 4 steps, and Orbit the orbit LoRA at
+// Quality's steps. Start and end images go to Image to Video, which shows them to the text encoder;
+// images partway are Add Guide nodes at their frame. References switch to the reference model and its node, where every keyframe is an Add Guide.
 // Node ids line up with NODE_STAGES; the images, references and extended video are numbered from 50.
 export function buildVideoWorkflow(s) {
   const v = s.video;
@@ -169,8 +168,8 @@ export function buildVideoWorkflow(s) {
   const refs = usesRefs(v);
   const mode = videoMode(v);
   const orbit = mode === "orbit";
-  const lora = mode === "quality" ? null : orbit ? videoFiles.lora : videoLoras(v)[mode][0];
-  const model = [orbit ? "21" : lora ? "20" : "1", 0];
+  const lora = mode === "quality" ? null : videoLoras(v)[mode][0];
+  const model = [lora ? "20" : "1", 0];
   // Extending makes a new video that opens on the old one's last 22 frames, from a second before its end.
   const length = videoLength(v.seconds + (v.extend ? 1 : 0));
   const graph = {
@@ -178,9 +177,7 @@ export function buildVideoWorkflow(s) {
     "2": { class_type: "CLIPLoader", inputs: { clip_name: videoFiles.clip, type: "minimax", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: videoFiles.vae } },
     "19": { class_type: "VAELoader", inputs: { vae_name: videoFiles.audio_vae } },
-    ...(lora && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: lora, strength_model: 1, model: ["1", 0] } } }),
-    ...(orbit && { "21": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: videoFiles.orbit_lora, strength_model: 1, model: ["20", 0] } } }),
-  };
+    ...(lora && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: lora, strength_model: 1, model: ["1", 0] } } }),  };
   let next = 50;
   const add = (class_type, inputs) => { graph[next] = { class_type, inputs }; return String(next++); };
   const image = (item) => [add("LoadImage", { image: mediaPath(item) }), 0];
