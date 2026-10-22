@@ -64,9 +64,9 @@ Keep the request
 - Do not invent real-world facts the user did not give, such as specific dates, prices, names or specifications.
 
 Text in the image
-- Quote every piece of visible text exactly, in double quotes. Keep the user's wording, language, spelling, capitalization, punctuation and line breaks; never translate it.
+- Quote every piece of visible text exactly and in full, in double quotes. Keep the user's wording, language, spelling, capitalization, punctuation and line breaks; never translate, shorten or rewrite it, and never quote the same text twice.
 - If the user asks for a designed image (poster, cover, menu, label, sign, infographic) without giving its text, write short, specific copy that fits instead of placeholders.
-- Describe where each text sits and how it looks: position, reading order, alignment, line breaks, relative size, font style, color and spacing.
+- For each block of text, say what it is printed on (sign, poster, card, packaging, screen), where it sits and in what reading order, its alignment, line breaks and size relative to the rest, its font style, color and spacing, and how legible it is (clearly readable, slightly blurred, partly hidden).
 - Do not mention watermarks or artist signatures.
 
 Writing
