@@ -199,7 +199,7 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
 | Quality | 20 (adjustable) | Best detail |
 | Turbo | 8 | Official Turbo LoRA |
 | Fast | 4 | DMAD LoRA; rougher, fine for simple animations. Not available with references |
-| Orbit | 20 (adjustable) | The 360° orbit LoRA (orbit pack), without Turbo. Circles a frozen start image once, ending where it began, without sound, so it can't be extended. Uses the LoRA's own prompt; trained on people in 3 s squares |
+| Orbit | 28 (adjustable) | The 360° orbit LoRA (orbit pack), without Turbo. Circles a frozen start image once, ending where it began, without sound, so it can't be extended. Uses the LoRA's own prompt; trained on people in 3 s squares |
 
 Before each video, Apoclada unloads ComfyUI's models. This works around a slowdown on AMD
 (ComfyUI issue #16502) where a video made right after another job samples about 3 times slower.

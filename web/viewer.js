@@ -4,6 +4,7 @@ import {
   selectTab, addFromGallery, removeResult,
 } from "./app.js";
 import { FRAMES_LINE, KREA2_ENHANCE } from "./prompts.js";
+import { stepsField } from "./workflows.js";
 
 let gallery = [];
 let viewer = { list: [], index: 0 };
@@ -444,7 +445,7 @@ function reuseVideo(graph, h3) {
   v.seconds = Math.min(15, Math.max(2, Math.round(h3.length / 24) - (extend ? 1 : 0)));
   v.mode = savedVideoMode(graph);
   const scheduler = inputsOf(graph, "BasicScheduler");
-  if (["quality", "orbit"].includes(v.mode) && scheduler) v.steps = scheduler.steps;
+  if (["quality", "orbit"].includes(v.mode) && scheduler) v[stepsField(v.mode)] = scheduler.steps;
   v.mp = nearest(VIDEO_MP, h3.width * h3.height);
   // An orbit's end image is its start image again, which the orbit adds itself.
   v.items = v.mode === "orbit" ? items.filter((i) => i.role !== "end") : items;

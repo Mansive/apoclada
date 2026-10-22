@@ -124,7 +124,7 @@ export function buildKrea2Workflow(s, model, width, height) {
 }
 
 // Each mode's LoRA and steps. The reference model has its own Turbo LoRA, which ComfyUI's template
-// runs at 4 steps, and no Fast or Orbit one. Orbit isn't distilled, so it takes Quality's steps.
+// runs at 4 steps, and no Fast or Orbit one. Orbit isn't distilled, so its steps are adjustable like Quality's.
 export function videoLoras(v) {
   return usesRefs(v)
     ? { turbo: [videoFiles?.ref_lora, 4] }
@@ -143,8 +143,11 @@ export function videoMode(v) {
 }
 
 export function videoSteps(v, mode) {
-  return videoLoras(v)[mode]?.[1] ?? v.steps;
+  return videoLoras(v)[mode]?.[1] ?? v[stepsField(mode)];
 }
+
+// Orbit keeps its own steps, since its LoRA recommends 28 where Quality's template uses 20.
+export function stepsField(mode) { return mode === "orbit" ? "orbitSteps" : "steps"; }
 
 // The line that opens the prompt for a start image, an end image or both, from MiniMax's guide:
 // the end image belongs to the last shot and falls at the video's length.
@@ -159,7 +162,7 @@ function framesLine(v, length) {
 
 // Mirrors ComfyUI's official MiniMax H3 templates: no CFG, res_multistep, 8 steps with the turbo LoRA,
 // or 20 by default without it. Fast swaps in the DMAD LoRA at 4 steps, and Orbit the orbit LoRA at
-// Quality's steps. Start and end images go to Image to Video, which shows them to the text encoder;
+// 28 by default. Start and end images go to Image to Video, which shows them to the text encoder;
 // images partway are Add Guide nodes at their frame. References switch to the reference model and its node, where every keyframe is an Add Guide.
 // Node ids line up with NODE_STAGES; the images, references and extended video are numbered from 50.
 export function buildVideoWorkflow(s) {
