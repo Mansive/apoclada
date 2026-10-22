@@ -190,8 +190,6 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
   or a partway frame. In the viewer, **Animate** starts from an image; **Extend** continues a video.
 - **References** (MiniMax H3 references pack): pictures, videos and voices the video follows. Name
   them in the prompt by their captions, like `<Picture 1>`. Turbo runs them in 4 steps.
-- **360° orbit** (Settings, orbit pack): the camera circles a frozen start image once and ends where
-  it began, without sound or Extend. Uses the LoRA's own prompt; trained on people in 3 s squares.
 - **Prompt:** H3 reads three fields: the shots, the ambient sound and the background music. Each
   shot can have camera moves, a cut time (`At 00:01.500`) and spoken lines in `<d>` tags. The
   example prompts show the format.
@@ -201,6 +199,7 @@ Switch to **Video**. H3 makes 2 to 15 seconds of video with sound at up to 0.98 
 | Quality | 20 (adjustable) | Best detail |
 | Turbo | 8 | Official Turbo LoRA |
 | Fast | 4 | DMAD LoRA; rougher, fine for simple animations. Not available with references |
+| Orbit | 8 | Turbo plus the 360° orbit LoRA (orbit pack). Circles a frozen start image once, ending where it began, without sound, so it can't be extended. Uses the LoRA's own prompt; trained on people in 3 s squares |
 
 Before each video, Apoclada unloads ComfyUI's models. This works around a slowdown on AMD
 (ComfyUI issue #16502) where a video made right after another job samples about 3 times slower.

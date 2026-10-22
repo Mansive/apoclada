@@ -1,6 +1,6 @@
 // The form, generation and Setup. Workflows and the viewer import the settings and the PC's files from here.
 import { ANIMATE_PROMPT, KREA2_PROMPT, MOSS_PROMPT, ORBIT_PROMPT, REFERENCE_PROMPT, VIDEO_PROMPT } from "./prompts.js";
-import { buildKrea2Workflow, buildMossWorkflow, buildRapidWorkflow, buildVideoWorkflow, buildWorkflow, orbits, videoLoras, videoMode, videoSteps } from "./workflows.js";
+import { buildKrea2Workflow, buildMossWorkflow, buildRapidWorkflow, buildVideoWorkflow, buildWorkflow, canOrbit, videoLoras, videoMode, videoSteps } from "./workflows.js";
 import { bindViewer, duration, loadGallery, openViewer, thumbButton } from "./viewer.js";
 import { loadPrefs, loadSetup, loadUpdates, refreshPrefs } from "./setup.js";
 
@@ -61,13 +61,13 @@ const DEFAULTS = {
   aspect: "1:1", mp: 1, ...MODES.full.tuning, seed: 42,
   randomSeed: true, batch: 1, model: "", enhance: false, easyCache: false,
   mode: "full", tuning: {}, kind: "image",
-  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null, orbit: false },
+  video: { prompt: VIDEO_PROMPT, aspect: "16:9", mp: 0.4, seconds: 5, mode: "turbo", steps: 20, items: [], extend: null },
 };
 // MiniMax H3 is trained on a 768 short edge capped at 768×1344; the official template defaults to ~0.4 MP.
 // 0.98 MP is H3's native canvas (1344×768 at 16:9); Comfy's guide warns 1 MP rounds above it.
 export const VIDEO_MP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.98];
 // Video modes by id, with the names shown for them.
-const VIDEO_MODES = { fast: "Fast", turbo: "Turbo", quality: "Quality" };
+const VIDEO_MODES = { fast: "Fast", turbo: "Turbo", quality: "Quality", orbit: "Orbit" };
 const PROMPT_HINTS = {
   image: "Describe the image. Tap \"Default prompts\" for an example tailored to the selected model.",
   video: "Describe the video and its sound. Tap \"Default prompts\" for an example in MiniMax's format.",
@@ -191,7 +191,7 @@ function renderChoices() {
   // Video step counts are filled in by syncVideoForm, since Turbo's depends on the model.
   for (const b of $("video-mode").children) {
     b.replaceChildren(VIDEO_MODES[b.dataset.mode], el("small"));
-    b.onclick = () => { settings.video.mode = b.dataset.mode; syncForm(); };
+    b.onclick = () => editVideo((v) => { v.mode = b.dataset.mode; });
   }
   for (const b of $("kind").children) b.onclick = () => { settings.kind = b.dataset.kind; syncForm(); };
 }
@@ -273,7 +273,6 @@ export function syncForm() {
   $("settings-summary").textContent = (video
     ? [
         VIDEO_MODES[videoMode(v)],
-        orbits(v) ? "360° orbit" : "",
         `${vsize.width}×${vsize.height}`,
         `${videoSteps(v, videoMode(v))} steps`,
         `${v.extend ? "+" : ""}${v.seconds} s`,
@@ -322,16 +321,18 @@ function syncVideoForm() {
   const loras = videoLoras(v);
   $("video-mode").querySelector("[data-mode=turbo]").disabled = !loras.turbo[0];
   $("video-mode").querySelector("[data-mode=fast]").disabled = !loras.fast?.[0];
+  const orbit = $("video-mode").querySelector("[data-mode=orbit]");
+  orbit.hidden = !videoFiles?.orbit_lora;
+  orbit.disabled = !loras.orbit?.[0] || !canOrbit(v);
+  orbit.title = usesRefs(v) ? "Not available with references" : v.extend ? "Not available when continuing a video" : canOrbit(v) ? "" : "Needs a start image";
+  $("video-mode").className = orbit.hidden ? "segmented" : "segmented four";
+  $("orbit-note").hidden = orbit.hidden;
   for (const b of $("video-mode").children) {
     const steps = b.dataset.mode === "quality" ? DEFAULTS.video.steps : loras[b.dataset.mode]?.[1];
     b.querySelector("small").textContent = steps ? `${steps} steps` : "";
   }
   check($("video-mode"), "mode", mode);
   setUnused($("vsteps-field"), mode !== "quality", `${VIDEO_MODES[mode]} always uses ${videoSteps(v, mode)} steps`);
-  $("orbit-field").hidden = !videoFiles?.orbit_lora;
-  $("orbit").checked = v.orbit;
-  setUnused($("orbit-field"), !orbits({ ...v, orbit: true }),
-    usesRefs(v) ? "Not available with references" : v.extend ? "Not available when continuing a video" : "Needs a start image");
   $("vsteps").value = v.steps;
   $("vsteps-out").textContent = v.steps;
   $("video-mp").value = VIDEO_MP.indexOf(v.mp);
@@ -427,7 +428,7 @@ export function editVideo(change) {
 }
 
 function videoPrompt(v) {
-  if (orbits(v)) return ORBIT_PROMPT;
+  if (videoMode(v) === "orbit") return ORBIT_PROMPT;
   return usesRefs(v) ? REFERENCE_PROMPT : v.items.some((i) => i.role === "start") ? ANIMATE_PROMPT : VIDEO_PROMPT;
 }
 
@@ -567,9 +568,7 @@ function addSliderButtons() {
 function bindForm() {
   addSliderButtons();
   $("prompt").oninput = (e) => { (settings.kind === "video" ? settings.video : settings).prompt = e.target.value; save(SETTINGS_KEY, settings); };
-  $("length").oninput = (e) => { settings.video.seconds = Number(e.target.value); syncForm(); };
-  $("orbit").onchange = (e) => editVideo((v) => { v.orbit = e.target.checked; });
-  $("vsteps").oninput = (e) => { settings.video.steps = Number(e.target.value); syncForm(); };
+  $("length").oninput = (e) => { settings.video.seconds = Number(e.target.value); syncForm(); };  $("vsteps").oninput = (e) => { settings.video.steps = Number(e.target.value); syncForm(); };
   $("media-file").onchange = async (e) => {
     const file = e.target.files[0];
     e.target.value = "";
@@ -604,7 +603,7 @@ function bindForm() {
   $("reset").onclick = () => {
     const { video, kind } = settings;
     if (kind === "video") {
-      settings.video = { ...DEFAULTS.video, prompt: video.prompt, items: video.items, extend: video.extend, orbit: video.orbit };
+      settings.video = { ...DEFAULTS.video, prompt: video.prompt, items: video.items, extend: video.extend };
       Object.assign(settings, { seed: DEFAULTS.seed, randomSeed: DEFAULTS.randomSeed });
     } else {
       settings = { ...DEFAULTS, ...MODES[settings.mode].tuning, prompt: settings.prompt, negative: settings.negative, model: settings.model, mode: settings.mode, tuning: {}, video, kind };

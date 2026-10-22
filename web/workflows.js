@@ -124,21 +124,23 @@ export function buildKrea2Workflow(s, model, width, height) {
 }
 
 // Each mode's LoRA and steps. The reference model has its own Turbo LoRA, which ComfyUI's template
-// runs at 4 steps, and no Fast one.
+// runs at 4 steps, and no Fast or Orbit one. Orbit adds pablodawson's 360° orbit LoRA after Turbo's,
+// so it needs both.
 export function videoLoras(v) {
-  return usesRefs(v) ? { turbo: [videoFiles?.ref_lora, 4] } : { turbo: [videoFiles?.lora, 8], fast: [videoFiles?.fast_lora, 4] };
+  return usesRefs(v)
+    ? { turbo: [videoFiles?.ref_lora, 4] }
+    : { turbo: [videoFiles?.lora, 8], fast: [videoFiles?.fast_lora, 4], orbit: [videoFiles?.lora && videoFiles?.orbit_lora, 8] };
 }
 
-// Fast runs as Turbo on the reference model, and either falls back to Quality when its LoRA isn't on the PC.
+// An orbit turns a start image into a camera orbit that ends where it began, so it can't continue a video.
+export function canOrbit(v) { return !v.extend && v.items.some((i) => i.role === "start"); }
+
+// Fast runs as Turbo on the reference model, and so does Orbit without a start image. Each falls back to
+// Quality when its LoRA isn't on the PC.
 export function videoMode(v) {
   const loras = videoLoras(v);
-  const mode = v.mode in loras ? v.mode : "turbo";
+  const mode = v.mode in loras && (v.mode !== "orbit" || canOrbit(v)) ? v.mode : "turbo";
   return v.mode !== "quality" && loras[mode][0] ? mode : "quality";
-}
-
-// The orbit LoRA turns a start image into a camera orbit that ends where it began, on the image-to-video model.
-export function orbits(v) {
-  return Boolean(v.orbit && videoFiles?.orbit_lora && !usesRefs(v) && !v.extend && v.items.some((i) => i.role === "start"));
 }
 
 export function videoSteps(v, mode) {
@@ -166,8 +168,8 @@ export function buildVideoWorkflow(s) {
   const { width, height } = videoDimensions(v);
   const refs = usesRefs(v);
   const mode = videoMode(v);
-  const lora = mode === "quality" ? null : videoLoras(v)[mode][0];
-  const orbit = orbits(v);
+  const orbit = mode === "orbit";
+  const lora = mode === "quality" ? null : orbit ? videoFiles.lora : videoLoras(v)[mode][0];
   const model = [orbit ? "21" : lora ? "20" : "1", 0];
   // Extending makes a new video that opens on the old one's last 22 frames, from a second before its end.
   const length = videoLength(v.seconds + (v.extend ? 1 : 0));
@@ -177,7 +179,7 @@ export function buildVideoWorkflow(s) {
     "3": { class_type: "VAELoader", inputs: { vae_name: videoFiles.vae } },
     "19": { class_type: "VAELoader", inputs: { vae_name: videoFiles.audio_vae } },
     ...(lora && { "20": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: lora, strength_model: 1, model: ["1", 0] } } }),
-    ...(orbit && { "21": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: videoFiles.orbit_lora, strength_model: 1, model: [lora ? "20" : "1", 0] } } }),
+    ...(orbit && { "21": { class_type: "LoraLoaderModelOnly", inputs: { lora_name: videoFiles.orbit_lora, strength_model: 1, model: ["20", 0] } } }),
   };
   let next = 50;
   const add = (class_type, inputs) => { graph[next] = { class_type, inputs }; return String(next++); };
