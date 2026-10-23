@@ -1,7 +1,7 @@
 import { $, el, getJson, post, toast, loadModels } from "./app.js";
 
 // Setup's file format, shared by every device through the PC; generate() refreshes it before each image.
-export let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] }, video_jxl: false, video_jxl_available: false };
+export let prefs = { image_format: "png", jxl_lossless: true, jxl_available: false, video_codec: "h264", video_encoder: null, video_encoders: { h264: [], hevc: [] }, video_copy: "none", video_jxl_available: false };
 export async function refreshPrefs() { prefs = await getJson("/studio/prefs", prefs); }
 
 let setupTimer = null;
@@ -110,10 +110,13 @@ export async function loadPrefs(change) {
     el("span", { className: "note", textContent: p.video_encoder !== "software"
       ? `The graphics card encodes the video.${hevc && p.video_encoder === "amd" ? " Very narrow videos use Software instead." : ""}`
       : `${hevc ? "x265" : "x264"} encodes the video on the CPU, a few seconds slower than a graphics card.${encoders.length > 1 ? "" : " No NVIDIA or AMD video encoder was found."}` }),
-    p.video_jxl_available && group(
-      radio("MP4 only", "Smallest", !p.video_jxl, { video_jxl: false }),
-      radio("Lossless copy", "Plus JPEG XL", p.video_jxl, { video_jxl: true })),
-    p.video_jxl && el("span", { className: "note", textContent: "Each video also gets every frame exactly as decoded, in an animated JPEG XL beside the MP4 and many times its size. The gallery shows only the MP4, and deleting it deletes the copy too." }),
+    group(
+      radio("MP4 only", "Smallest", p.video_copy === "none", { video_copy: "none" }),
+      radio("+ JPEG XL", "Lossless copy", p.video_copy === "jxl", { video_copy: "jxl" }, !p.video_jxl_available),
+      radio("+ APNG", "Lossless copy", p.video_copy === "apng", { video_copy: "apng" })),
+    p.video_copy !== "none" && el("span", { className: "note", textContent: `Each video also gets every frame exactly as decoded, in an animated ${p.video_copy === "jxl" ? "JPEG XL" : "PNG"} beside the MP4 and many times its size. The gallery shows only the MP4, and deleting it deletes the copy too.` }),
+    p.video_copy !== "none" && el("span", { className: "note", textContent: "APNG plays in any browser. JPEG XL files are smaller, but few apps play them." }),
+    !p.video_jxl_available && el("span", { className: "note", textContent: "A JPEG XL copy needs FFmpeg built with libjxl on the PC's PATH." }),
     el("span", { className: "note", textContent: "Applies to new videos from every device. Existing videos keep their format." }),
   ].filter(Boolean));
 }
