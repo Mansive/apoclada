@@ -244,7 +244,7 @@ export function buildVideoWorkflow(s) {
         : { images: ["17", 0], ...(!orbit && { audio: ["22", 0] }), fps: 24 },
     },
     // Codec and encoder come from Setup.
-    "18": { class_type: "ApocladaSaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", codec: prefs.video_codec, encoder: prefs.video_encoder ?? "software" } },
+    "18": { class_type: "ApocladaSaveVideo", inputs: { video: ["23", 0], filename_prefix: "studio/h3", codec: prefs.video_codec, encoder: prefs.video_encoder ?? "software", lossless_jxl: prefs.video_jxl } },
   });
   return graph;
 }

@@ -262,6 +262,15 @@ def working_video_encoders():
     return working_encoders
 
 
+# Pillow and PyAV only write still JPEG XL, so animated copies come from an FFmpeg on PATH built with libjxl.
+@functools.cache
+def jxl_ffmpeg():
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg and "libjxl_anim" in subprocess.run([ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True).stdout:
+        return ffmpeg
+    return None
+
+
 # SaveVideo's twin with a choice of encoder. H.265 is tagged hvc1 so Safari plays it. Audio,
 # metadata and color tags are written the way SaveVideo writes them.
 class SaveVideoMP4:
@@ -275,10 +284,11 @@ class SaveVideoMP4:
     def INPUT_TYPES(s):
         return {
             "required": {"video": ("VIDEO",), "filename_prefix": ("STRING", {"default": "video/ComfyUI"}), "codec": (list(VIDEO_ENCODERS),), "encoder": (["nvidia", "amd", "software"],)},
+            "optional": {"lossless_jxl": ("BOOLEAN", {"default": False, "tooltip": "Also saves a lossless animated JPEG XL beside the MP4. Needs FFmpeg with libjxl on PATH."})},
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
-    def save_video(self, video, filename_prefix, codec, encoder, prompt=None, extra_pnginfo=None):
+    def save_video(self, video, filename_prefix, codec, encoder, lossless_jxl=False, prompt=None, extra_pnginfo=None):
         c = video.get_components()
         height, width = c.images.shape[1:3]
         # AMD's H.265 encoder won't open below 384 px wide (Apoclada's smallest portrait videos), so
@@ -289,13 +299,19 @@ class SaveVideoMP4:
         extra = studio_metadata(extra_pnginfo)
         full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(filename_prefix, folder_paths.get_output_directory(), width, height)
         file = f"{filename}_{counter:05}_.mp4"
+        frame_rate = Fraction(round(c.frame_rate * 1000), 1000)
+        jxl = None
+        if lossless_jxl:
+            if not jxl_ffmpeg():
+                raise RuntimeError("The lossless JPEG XL copy needs FFmpeg with libjxl on PATH.")
+            jxl = subprocess.Popen([jxl_ffmpeg(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-framerate", str(frame_rate), "-i", "-",
+                                    "-c:v", "libjxl_anim", "-distance", "0", "-effort", "7", "-f", "image2pipe", os.path.join(full_output_folder, file[:-4] + ".jxl")], stdin=subprocess.PIPE)
         with av.open(os.path.join(full_output_folder, file), "w", format="mp4", options={"movflags": "use_metadata_tags+faststart"}) as out:
             if not args.disable_metadata:
                 for key, value in ({**extra, "prompt": prompt} if prompt is not None else extra).items():
                     out.metadata[key] = json.dumps(value)
             # Info shows the encoder that actually ran, which can differ from the one asked for.
             out.metadata["video_encoder"] = name
-            frame_rate = Fraction(round(c.frame_rate * 1000), 1000)
             stream = out.add_stream(name, rate=frame_rate)
             stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
             stream.options = options
@@ -308,7 +324,10 @@ class SaveVideoMP4:
                 layout = {1: "mono", 2: "stereo", 6: "5.1"}.get(waveform.shape[0], "stereo")
                 audio = out.add_stream("aac", rate=sample_rate, layout=layout)
             for image in c.images:
-                frame = av.VideoFrame.from_ndarray((image * 255).clamp(0, 255).byte().cpu().numpy(), format="rgb24")
+                rgb = (image * 255).clamp(0, 255).byte().cpu().numpy()
+                if jxl:
+                    jxl.stdin.write(rgb)
+                frame = av.VideoFrame.from_ndarray(rgb, format="rgb24")
                 frame = frame.reformat(format="yuv420p", dst_colorspace=BT709_NCL)
                 set_video_color_properties(frame, "sRGB")
                 out.mux(stream.encode(frame))
@@ -318,6 +337,10 @@ class SaveVideoMP4:
                 frame.sample_rate, frame.pts = sample_rate, 0
                 out.mux(audio.encode(frame))
                 out.mux(audio.encode(None))
+        if jxl:
+            jxl.stdin.close()
+            if jxl.wait():
+                raise RuntimeError("FFmpeg couldn't write the lossless JPEG XL copy.")
         return with_time({"ui": {"images": [{"filename": file, "subfolder": subfolder, "type": "output"}], "animated": (True,)}}, extra)
 
 
@@ -326,7 +349,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {"ApocladaSaveImage": "Save Image (Apoclada)", "Apo
 
 # Choices from the Setup screen, kept in ComfyUI's user folder so every device shares them.
 PREFS_FILE = os.path.join(folder_paths.get_user_directory(), "apoclada_studio.json")
-PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True, "video_codec": "h264", "video_encoder": None}
+PREF_DEFAULTS = {"image_format": "png", "jxl_lossless": True, "video_codec": "h264", "video_encoder": None, "video_jxl": False}
 
 
 def load_prefs():
@@ -345,7 +368,9 @@ async def prefs_response(prefs):
     codec_encoders = encoders[prefs["video_codec"]]
     encoder = prefs["video_encoder"] if prefs["video_encoder"] in codec_encoders else next(iter(codec_encoders), None)
     image_format = prefs["image_format"] if pillow_jxl else "png"
-    return web.json_response({**prefs, "image_format": image_format, "video_encoder": encoder, "jxl_available": pillow_jxl is not None, "video_encoders": encoders})
+    video_jxl_available = await asyncio.to_thread(jxl_ffmpeg) is not None
+    return web.json_response({**prefs, "image_format": image_format, "video_encoder": encoder, "video_jxl": prefs["video_jxl"] and video_jxl_available,
+                              "jxl_available": pillow_jxl is not None, "video_encoders": encoders, "video_jxl_available": video_jxl_available})
 
 
 @routes.get("/studio/prefs")
@@ -365,6 +390,8 @@ async def studio_prefs_save(request):
         prefs["video_codec"] = data["video_codec"]
     if data.get("video_encoder") in VIDEO_ENCODERS["h264"]:
         prefs["video_encoder"] = data["video_encoder"]
+    if isinstance(data.get("video_jxl"), bool):
+        prefs["video_jxl"] = data["video_jxl"]
     with open(PREFS_FILE, "w", encoding="utf-8") as f:
         json.dump(prefs, f)
     return await prefs_response(prefs)
@@ -625,7 +652,9 @@ def list_media(folder):
     for dirpath, _, files in os.walk(output_path(folder)):
         subfolder = os.path.relpath(dirpath, output_dir).replace(os.sep, "/")
         for filename in files:
-            if os.path.splitext(filename)[1].lower() in MEDIA_EXTS:
+            stem, ext = os.path.splitext(filename)
+            # A video's lossless JPEG XL copy stays out of the gallery; the MP4 stands for both.
+            if ext.lower() in MEDIA_EXTS and not (ext.lower() == ".jxl" and stem + ".mp4" in files):
                 images.append({
                     "filename": filename,
                     "subfolder": "" if subfolder == "." else subfolder,
@@ -750,5 +779,9 @@ async def studio_restart(request):
 @routes.post("/studio/images/delete")
 async def studio_image_delete(request):
     data = await request.json()
-    os.remove(output_file(data))
+    path = output_file(data)
+    os.remove(path)
+    # The gallery hides a video's lossless copy, so it goes with the video.
+    if is_video(path) and os.path.isfile(copy := os.path.splitext(path)[0] + ".jxl"):
+        os.remove(copy)
     return web.json_response({"deleted": data.get("filename")})
