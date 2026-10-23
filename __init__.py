@@ -133,6 +133,14 @@ def timed_queue_get(*args, **kwargs):
     item = queue_get(*args, **kwargs)
     if item is not None:
         job_started = time.perf_counter()
+        # On AMD, a video made after another job samples ever slower until ComfyUI unloads everything
+        # (ComfyUI issue #16502). The page asks for that with /free, but ComfyUI keeps one flag, so
+        # videos queued together share one unload. Asking again whenever a video is next gives each
+        # its own, applied when the job starting now ends.
+        _, queued = PromptServer.instance.prompt_queue.get_current_queue_volatile()
+        if queued and any(n["class_type"].startswith("MiniMaxH3") for n in queued[0][2].values()):
+            PromptServer.instance.prompt_queue.set_flag("unload_models", True)
+            PromptServer.instance.prompt_queue.set_flag("free_memory", True)
     return item
 
 

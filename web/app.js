@@ -636,7 +636,7 @@ async function generate() {
   await refreshPrefs();
   // On AMD, a video made after another generation samples about 3x slower until ComfyUI unloads
   // everything (ComfyUI issue #16502). ComfyUI applies /free between jobs, so a video queued behind
-  // another job still gets it just before it starts.
+  // another job still gets it just before it starts; the server repeats it for videos queued together.
   if (video) await post("/free", { unload_models: true, free_memory: true }).catch(() => null);
   // ComfyUI sends no previews unless started with --preview-method, so each job asks for them.
   const res = await post("/prompt", {
