@@ -12,6 +12,7 @@ let viewer = { list: [], index: 0 };
 export function thumbButton(img, onclick) {
   const btn = el("button", { type: "button", className: isVideo(img) ? "video" : "", onclick }, el("img", { loading: "lazy", src: thumbUrl(img), alt: img.filename }));
   btn.dataset.key = imageKey(img);
+  if (img.duration) btn.dataset.duration = clock(img.duration);
   return btn;
 }
 
@@ -325,6 +326,12 @@ function infoRows(info) {
 export function duration(seconds) {
   const s = Math.round(seconds);
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+}
+
+// A video's length as Photos shows it on a tile, such as 0:06.
+export function clock(seconds) {
+  const s = Math.round(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 const FORMATS = { PNG: "PNG", JXL: "JPEG XL", JPEG: "JPEG", WEBP: "WebP", h264: "H.264", hevc: "H.265", av1: "AV1", vp9: "VP9", aac: "AAC", opus: "Opus" };

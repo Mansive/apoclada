@@ -1,7 +1,7 @@
 // The form, generation and Setup. Workflows and the viewer import the settings and the PC's files from here.
 import { ANIMATE_PROMPT, KREA2_PROMPT, MOSS_PROMPT, ORBIT_PROMPT, REFERENCE_PROMPT, VIDEO_PROMPT } from "./prompts.js";
 import { buildKrea2Workflow, buildMossWorkflow, buildRapidWorkflow, buildVideoWorkflow, buildWorkflow, canOrbit, stepsField, videoLoras, videoMode, videoSteps } from "./workflows.js";
-import { bindViewer, duration, loadGallery, openViewer, thumbButton } from "./viewer.js";
+import { bindViewer, clock, duration, loadGallery, openViewer, thumbButton } from "./viewer.js";
 import { loadPrefs, loadSetup, loadUpdates, refreshPrefs } from "./setup.js";
 
 export const ASPECTS = [["1:1", 1, 1], ["4:3", 4, 3], ["3:4", 3, 4], ["3:2", 3, 2], ["2:3", 2, 3], ["16:9", 16, 9], ["9:16", 9, 16]];
@@ -762,12 +762,13 @@ function showResults(images, version) {
     // Videos loop silently here as a preview; a tap opens the viewer, like images, for sound, controls
     // and Delete. iOS only autoplays inline videos that start muted, and the muted property is not taken
     // from the attribute on elements created by script, so both are set. The wrapper carries the same
-    // ▶ badge as the gallery, which a <video> can't draw itself.
+    // length badge as the gallery, which a <video> can't draw itself.
     if (isVideo(img)) {
       const video = document.createElement("video");
       for (const attr of ["muted", "loop", "autoplay", "playsinline"]) video.setAttribute(attr, "");
       video.muted = true;
       video.src = imageUrl(img);
+      video.onloadedmetadata = () => { el.dataset.duration = clock(video.duration); };
       el = document.createElement("div");
       el.className = "video";
       el.append(video);

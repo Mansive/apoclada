@@ -644,6 +644,17 @@ def is_video(path):
     return os.path.splitext(path)[1].lower() in VIDEO_EXTS
 
 
+# Gallery tiles show each video's length. Reading it opens the file, so it's kept per file version.
+# A video still being written has no length yet.
+@functools.cache
+def video_duration(path, mtime):
+    try:
+        with av.open(path) as container:
+            return container.duration / av.time_base if container.duration else None
+    except av.FFmpegError:
+        return None
+
+
 # The gallery, thumbnails and PNG copies read and decode files, so they run in a thread to keep
 # ComfyUI's progress and previews flowing while the iPad loads a page of them.
 def list_media(folder):
@@ -655,11 +666,11 @@ def list_media(folder):
             stem, ext = os.path.splitext(filename)
             # A video's lossless JPEG XL copy stays out of the gallery; the MP4 stands for both.
             if ext.lower() in MEDIA_EXTS and not (ext.lower() == ".jxl" and stem + ".mp4" in files):
-                images.append({
-                    "filename": filename,
-                    "subfolder": "" if subfolder == "." else subfolder,
-                    "mtime": os.path.getmtime(os.path.join(dirpath, filename)),
-                })
+                path = os.path.join(dirpath, filename)
+                item = {"filename": filename, "subfolder": "" if subfolder == "." else subfolder, "mtime": os.path.getmtime(path)}
+                if ext.lower() in VIDEO_EXTS:
+                    item["duration"] = video_duration(path, item["mtime"])
+                images.append(item)
     images.sort(key=lambda i: i["mtime"], reverse=True)
     return images
 
