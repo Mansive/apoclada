@@ -12,6 +12,7 @@ import mimetypes
 import os
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -655,6 +656,27 @@ def video_duration(path, mtime):
         return None
 
 
+# An APNG's length is the sum of its frame delays. Its acTL chunk comes before the image data, so a
+# still PNG is only read up to there.
+@functools.cache
+def apng_duration(path, mtime):
+    animated, seconds = False, 0
+    with open(path, "rb") as f:
+        f.seek(8)
+        while len(header := f.read(8)) == 8:
+            length, kind = struct.unpack(">I4s", header)
+            if kind == b"acTL":
+                animated = True
+            elif kind == b"IDAT" and not animated:
+                return None
+            elif kind == b"fcTL":
+                num, den = struct.unpack(">HH", f.read(26)[20:24])
+                seconds += num / (den or 100)
+                length -= 26
+            f.seek(length + 4, 1)
+    return seconds if animated else None
+
+
 # The gallery, thumbnails and PNG copies read and decode files, so they run in a thread to keep
 # ComfyUI's progress and previews flowing while the iPad loads a page of them.
 def list_media(folder):
@@ -668,8 +690,9 @@ def list_media(folder):
             if ext.lower() in MEDIA_EXTS and not (ext.lower() == ".jxl" and stem + ".mp4" in files):
                 path = os.path.join(dirpath, filename)
                 item = {"filename": filename, "subfolder": "" if subfolder == "." else subfolder, "mtime": os.path.getmtime(path)}
-                if ext.lower() in VIDEO_EXTS:
-                    item["duration"] = video_duration(path, item["mtime"])
+                duration = video_duration(path, item["mtime"]) if ext.lower() in VIDEO_EXTS else apng_duration(path, item["mtime"]) if ext.lower() == ".png" else None
+                if duration:
+                    item["duration"] = duration
                 images.append(item)
     images.sort(key=lambda i: i["mtime"], reverse=True)
     return images

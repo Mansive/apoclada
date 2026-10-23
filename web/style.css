@@ -191,9 +191,10 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
   content: "▶"; position: absolute; right: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 50%;
   display: grid; place-items: center; font-size: 13px; color: oklch(1 0 0); background: oklch(0 0 0 / 0.55);
 }
-/* Once the length is known it replaces the ▶, as in Photos: white numbers on a soft dark shadow. */
-.grid button.video[data-duration]::after, .results .video[data-duration]::after {
-  content: attr(data-duration); width: auto; height: auto; right: 7px; bottom: 5px; border-radius: 0; background: none;
+/* Once the length is known it replaces the ▶, as in Photos: white numbers on a soft dark shadow.
+   Animated PNGs get it too. */
+.grid button[data-duration]::after, .results .video[data-duration]::after {
+  content: attr(data-duration); position: absolute; width: auto; height: auto; right: 7px; bottom: 5px; border-radius: 0; background: none; color: oklch(1 0 0);
   font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .01em;
   text-shadow: 0 0 2px oklch(0 0 0 / 0.6), 0 0 8px oklch(0 0 0 / 0.7);
 }
