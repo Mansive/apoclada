@@ -326,7 +326,7 @@ class SaveVideoMP4:
             for image in c.images:
                 rgb = (image * 255).clamp(0, 255).byte().cpu().numpy()
                 if jxl:
-                    jxl.stdin.write(rgb)
+                    jxl.stdin.write(rgb.tobytes())
                 frame = av.VideoFrame.from_ndarray(rgb, format="rgb24")
                 frame = frame.reformat(format="yuv420p", dst_colorspace=BT709_NCL)
                 set_video_color_properties(frame, "sRGB")
