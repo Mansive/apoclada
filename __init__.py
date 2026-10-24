@@ -373,6 +373,11 @@ def load_prefs():
     return {key: saved.get(key, default) for key, default in PREF_DEFAULTS.items()}
 
 
+def save_prefs(prefs):
+    with open(PREFS_FILE, "w", encoding="utf-8") as f:
+        json.dump(prefs, f)
+
+
 # Besides the saved choices, the page gets what this PC can do. The encoder falls back to the first
 # one that works for the codec (the GPU's, if any) when none was picked or the picked one can't run.
 async def prefs_response(prefs):
@@ -405,8 +410,7 @@ async def studio_prefs_save(request):
         prefs["video_encoder"] = data["video_encoder"]
     if data.get("video_copy") in ("none", "jxl", "apng"):
         prefs["video_copy"] = data["video_copy"]
-    with open(PREFS_FILE, "w", encoding="utf-8") as f:
-        json.dump(prefs, f)
+    await asyncio.to_thread(save_prefs, prefs)
     return await prefs_response(prefs)
 
 
@@ -523,6 +527,10 @@ def model_path(name):
     return os.path.join(next((p for p in paths if os.path.basename(p) == folder), paths[0]), name)
 
 
+def part_size(part):
+    return os.path.getsize(part) if os.path.exists(part) else 0
+
+
 async def download_pack(pack):
     names = [f for f in pack["files"] if not have(f)]
     download.update(total=sum(FILES[f][2] for f in names), done=0)
@@ -533,16 +541,17 @@ async def download_pack(pack):
             path = model_path(name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             part = path + ".part"
-            start = os.path.getsize(part) if os.path.exists(part) else 0
+            start = await asyncio.to_thread(part_size, part)
             download.update(file=name, done=finished + start)
             if start < size:
                 async with session.get(url, headers={"Range": f"bytes={start}-"} if start else {}) as res:
                     res.raise_for_status()
-                    with open(part, "ab" if res.status == 206 else "wb") as f:
+                    # Disk writes run in a thread so ComfyUI's progress and previews keep flowing meanwhile.
+                    with await asyncio.to_thread(open, part, "ab" if res.status == 206 else "wb") as f:
                         async for chunk in res.content.iter_chunked(1 << 22):
-                            f.write(chunk)
+                            await asyncio.to_thread(f.write, chunk)
                             download["done"] = finished + f.tell()
-            if os.path.getsize(part) != size:
+            if await asyncio.to_thread(part_size, part) != size:
                 raise RuntimeError(f"{name} came out at the wrong size; try again")
             os.replace(part, path)
             finished += size
@@ -749,9 +758,7 @@ async def studio_image_png(request):
     return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
 
-@routes.get("/studio/images/info")
-async def studio_image_info(request):
-    path = output_file(request.rel_url.query)
+def file_info(path):
     if is_video(path):
         with av.open(path) as container:
             prompt, seconds = container.metadata.get("prompt"), container.metadata.get("generation_time")
@@ -773,8 +780,13 @@ async def studio_image_info(request):
                 exif = img.getexif()
                 tags = dict(v.split(":", 1) for t in range(0x0110, 0, -1) if isinstance(v := exif.get(t), str) and ":" in v)
                 prompt, enhanced, seconds = tags.get("prompt"), tags.get("enhanced_prompt"), tags.get("generation_time")
-    return web.json_response({"prompt": json.loads(prompt) if prompt else None, "enhanced_prompt": json.loads(enhanced) if enhanced else None,
-                              "generation_time": json.loads(seconds) if seconds else None, "width": width, "height": height, "encoding": encoding, "bytes": os.path.getsize(path)})
+    return {"prompt": json.loads(prompt) if prompt else None, "enhanced_prompt": json.loads(enhanced) if enhanced else None,
+            "generation_time": json.loads(seconds) if seconds else None, "width": width, "height": height, "encoding": encoding, "bytes": os.path.getsize(path)}
+
+
+@routes.get("/studio/images/info")
+async def studio_image_info(request):
+    return web.json_response(await asyncio.to_thread(file_info, output_file(request.rel_url.query)))
 
 
 # "Show in folder" opens Explorer on the PC, so it's only offered to a browser on the PC itself,
@@ -791,7 +803,7 @@ async def studio_host(request):
 async def studio_image_reveal(request):
     data = await request.json()
     path = output_file(data)
-    subprocess.Popen(["explorer", f"/select,{path}"])
+    subprocess.Popen(["explorer", f"/select,{path}"])  # noqa: ASYNC220 -- Popen doesn't wait for Explorer
     return web.json_response({"revealed": data.get("filename")})
 
 
@@ -822,14 +834,17 @@ async def studio_restart(request):
     return web.json_response({"restarting": True})
 
 
-@routes.post("/studio/images/delete")
-async def studio_image_delete(request):
-    data = await request.json()
-    path = output_file(data)
+def delete_output(path):
     os.remove(path)
     # The gallery hides a video's lossless copy, so it goes with the video.
     stem, ext = os.path.splitext(path)
     for copy in (stem + ".jxl", stem + ".png") if ext.lower() == ".mp4" else ():
         if os.path.isfile(copy):
             os.remove(copy)
+
+
+@routes.post("/studio/images/delete")
+async def studio_image_delete(request):
+    data = await request.json()
+    await asyncio.to_thread(delete_output, output_file(data))
     return web.json_response({"deleted": data.get("filename")})
